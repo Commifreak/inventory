@@ -27,11 +27,10 @@ type Client struct {
 	HTTP       *http.Client
 }
 
-// NewClient creates a client. Proxy settings come from the environment
-// (HTTPS_PROXY) – and on Windows from the system configuration via
-// ProxyFromEnvironment as Go does not read WinINet settings.
+// NewClient creates a client that uses the system proxy (see proxy.go).
 func NewClient(baseURL, credential string) *Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = systemProxy
 	tr.ResponseHeaderTimeout = 2 * time.Minute
 	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), Credential: credential, HTTP: &http.Client{Transport: tr, Timeout: 15 * time.Minute}}
 }

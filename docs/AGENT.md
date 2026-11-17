@@ -44,7 +44,8 @@ machine id) and its history.
 ## Command line
 
 ```
-inventory-agent status            # enrollment, last check-in, last collector runs
+inventory-agent status            # enrollment, proxy, last check-in, last collector runs
+inventory-agent proxy [URL]       # proxy used for URL (default: the server URL) and its source
 inventory-agent collect [name…]   # run collectors and print the JSON (diagnostics)
 inventory-agent run               # foreground (debug: INVENTORY_DEBUG=1)
 inventory-agent uninstall [--quiet]
@@ -67,6 +68,31 @@ binary and local data. Delete the device in the web UI afterwards.
   are not refreshed (the timestamp of the last refresh is reported instead).
 - No collection of user files, browser data or license keys.
 
+## Proxy
+
+The agent uses the system proxy for all connections (check-in, reports,
+updates). Sources, first match wins:
+
+1. `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` in the service environment.
+2. Platform settings:
+   - **Windows:** the machine-wide WinHTTP proxy (`netsh winhttp set proxy`),
+     otherwise the proxy settings (*Settings → Network & internet → Proxy*) of
+     the user of the active session – or the machine-wide settings when the
+     policy `ProxySettingsPerUser=0` is set – including a PAC script and
+     automatic detection (WPAD). While nobody is signed in, the settings of the
+     last signed-in user are kept.
+   - **Linux:** `http(s)_proxy` / `no_proxy` in `/etc/environment` (systemd does
+     not pass it to services).
+   - **macOS:** the HTTP/HTTPS proxy and exceptions of the network settings
+     (`scutil --proxy`). PAC scripts and auto discovery are not evaluated.
+
+Settings are re-read every two minutes, no restart needed. Proxy
+authentication is limited to Basic credentials in the proxy URL
+(`http://user:password@proxy:3128`); NTLM/Kerberos proxies are not supported.
+The proxy in use is logged on changes and shown by `inventory-agent status` and
+`inventory-agent proxy [URL]`.
+The Linux/macOS install script uses the same sources for its downloads.
+
 ## Self-updates
 
 At check-in the server may offer another version (see *Settings → Agent
@@ -78,7 +104,8 @@ new version does not come up and check in, the previous binary is restored.
 ## Troubleshooting
 
 - *Device does not appear*: check `inventory-agent status` and the log. The
-  client needs outbound HTTPS to the server URL (no inbound ports).
+  client needs outbound HTTPS to the server URL (no inbound ports), directly or
+  through the system proxy (see *Proxy*).
 - *No SMART data on Windows*: RAID controllers and some USB enclosures hide
   disks; the agent falls back to the Windows storage API (less detail).
 - *Raspberry Pi / SD cards*: SD cards have no SMART. They are listed in the

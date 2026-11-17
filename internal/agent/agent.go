@@ -46,6 +46,7 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		}
 		return fmt.Errorf("load config: %w", err)
 	}
+	proxyLog = log
 	a := &Agent{cfg: cfg, state: LoadState(), log: log, colls: Collectors()}
 	a.client = NewClient(cfg.ServerURL, cfg.Credential)
 	log.Info("agent starting", "version", Version, "os", runtime.GOOS, "arch", runtime.GOARCH, "server", cfg.ServerURL)

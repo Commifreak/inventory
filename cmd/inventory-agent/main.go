@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -24,6 +25,7 @@ Usage:
   inventory-agent install [--server URL --token TOKEN] [--quiet]
   inventory-agent uninstall [--quiet]
   inventory-agent status
+  inventory-agent proxy [URL]               show the proxy used for URL (default: server)
   inventory-agent collect [collector ...]   print collected data as JSON
   inventory-agent run                       run in the foreground
   inventory-agent version
@@ -49,6 +51,18 @@ func main() {
 		fmt.Println(agent.Version)
 	case "run":
 		os.Exit(runForeground())
+	case "proxy":
+		target := ""
+		if len(args) > 1 {
+			target = args[1]
+		} else if cfg, err := agent.LoadConfig(); err == nil {
+			target = cfg.ServerURL
+		}
+		if target == "" {
+			fmt.Fprintln(os.Stderr, "usage: inventory-agent proxy URL")
+			os.Exit(2)
+		}
+		fmt.Println(proxyLine(target))
 	case "collect":
 		rep := agent.CollectAll(context.Background(), args[1:])
 		enc := json.NewEncoder(os.Stdout)
@@ -130,6 +144,22 @@ func logLevel() slog.Level {
 	return slog.LevelInfo
 }
 
+// proxyLine describes the proxy the agent uses for target.
+func proxyLine(target string) string {
+	u, err := url.Parse(target)
+	if err != nil || u.Host == "" {
+		return "invalid URL: " + target
+	}
+	p, source, err := agent.ProxyFor(u)
+	switch {
+	case err != nil:
+		return "error: " + err.Error()
+	case p == nil:
+		return "none (direct connection)"
+	}
+	return p.Redacted() + " (" + source + ")"
+}
+
 func printStatus() {
 	fmt.Println("version:   ", agent.Version)
 	fmt.Println("installed: ", agent.IsInstalled())
@@ -139,6 +169,7 @@ func printStatus() {
 		return
 	}
 	fmt.Println("server:    ", cfg.ServerURL)
+	fmt.Println("proxy:     ", proxyLine(cfg.ServerURL))
 	fmt.Println("device id: ", cfg.DeviceID)
 	fmt.Println("enrolled:  ", cfg.Credential != "")
 	st := agent.LoadState()

@@ -28,6 +28,26 @@ case "$(uname -m)" in
   *) die "unsupported architecture: $(uname -m)" ;;
 esac
 
+# System proxy: sudo usually drops the caller's proxy variables, so fall back
+# to /etc/environment (Linux) or the network settings (macOS) like the agent.
+if [ -z "${https_proxy:-}${HTTPS_PROXY:-}" ]; then
+  if [ "$GOOS" = "linux" ] && [ -r /etc/environment ]; then
+    for v in https_proxy HTTPS_PROXY http_proxy HTTP_PROXY no_proxy NO_PROXY; do
+      val=$(sed -n "s/^[[:space:]]*\(export[[:space:]]\+\)\?$v=[\"']\?\([^\"']*\)[\"']\?[[:space:]]*$/\2/p" /etc/environment | tail -n 1)
+      [ -n "$val" ] && export "$v=$val"
+    done
+  elif [ "$GOOS" = "darwin" ] && command -v scutil >/dev/null 2>&1; then
+    P=$(scutil --proxy)
+    if printf '%s\n' "$P" | grep -q 'HTTPSEnable : 1'; then
+      host=$(printf '%s\n' "$P" | sed -n 's/^ *HTTPSProxy : //p')
+      port=$(printf '%s\n' "$P" | sed -n 's/^ *HTTPSPort : //p')
+      [ -n "$host" ] && export https_proxy="http://$host${port:+:$port}"
+    fi
+  fi
+  P="${https_proxy:-${HTTPS_PROXY:-}}"
+  [ -z "$P" ] || say "using proxy ${P##*@}"
+fi
+
 if [ "$GOOS" = "linux" ]; then
   [ -d /run/systemd/system ] || die "systemd is required"
   if ! command -v smartctl >/dev/null 2>&1; then

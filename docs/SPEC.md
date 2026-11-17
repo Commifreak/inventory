@@ -30,7 +30,9 @@ out of scope.
 
 ## Agent ↔ server protocol
 
-JSON over HTTPS below `/api/agent/v1` (see `internal/protocol`).
+JSON over HTTPS below `/api/agent/v1` (see `internal/protocol`). Agents use the system
+proxy (environment; Windows WinHTTP + user WinINet settings incl. PAC/WPAD;
+Linux /etc/environment; macOS network settings), Basic proxy auth only.
 
 1. **Enroll** with the enrollment token from the installer → per-device credential
    (stored DPAPI-protected on Windows, root-only on Unix). The token is removed from

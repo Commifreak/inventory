@@ -55,6 +55,27 @@ jobs:
             "{0,-10} {1,6} ms  error: {2}  warnings: {3}" -f $s.Name, $s.Value.duration_ms, $s.Value.error, ($s.Value.warnings -join '; ')
           }
           if ($p.ExitCode -ne 0) { exit 1 }
+      - name: proxy
+        shell: pwsh
+        run: |
+          function ProxyFor($u) {
+            $p = Start-Process -FilePath .\inventory-agent.exe -ArgumentList 'proxy', $u -NoNewWindow -Wait -PassThru `
+              -RedirectStandardOutput proxy.out -RedirectStandardError proxy.err
+            Get-Content proxy.err
+            (Get-Content proxy.out -Raw)
+          }
+          # Machine-wide WinHTTP proxy (netsh) must be picked up, bypass list honoured.
+          netsh winhttp set proxy proxy-server="ci-proxy.invalid:3128" bypass-list="<local>;*.example.org"
+          try {
+            $a = ProxyFor 'https://inventory.example.com/'
+            $b = ProxyFor 'https://intranet.example.org/'
+            "proxied:  $a"; "bypassed: $b"
+            if ($a -notmatch 'ci-proxy.invalid:3128' -or $a -notmatch 'WinHTTP') { throw "WinHTTP proxy not used" }
+            if ($b -notmatch 'direct') { throw "bypass list ignored" }
+          } finally {
+            netsh winhttp reset proxy
+          }
+          "after reset: $(ProxyFor 'https://inventory.example.com/')"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
