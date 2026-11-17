@@ -215,11 +215,7 @@ func autoServices() ([]protocol.AutostartItem, error) {
 		bin := cfg.BinaryPathName
 		low := strings.ToLower(strings.Trim(bin, `"`))
 		vendor := strings.HasPrefix(low, winDir) || strings.HasPrefix(low, `%systemroot%`) || strings.HasPrefix(low, `system32\`)
-		display := cfg.DisplayName
-		if display == "" {
-			display = n
-		}
-		out = append(out, protocol.AutostartItem{Name: display + " (" + n + ")", Command: bin, Location: "Service", Scope: "machine", Enabled: true, Vendor: vendor})
+		out = append(out, protocol.AutostartItem{Name: serviceLabel(cfg.DisplayName, n), Command: bin, Location: "Service", Scope: "machine", Enabled: true, Vendor: vendor})
 	}
 	return out, nil
 }

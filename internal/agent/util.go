@@ -114,3 +114,16 @@ func truncateStr(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// serviceLabel combines a service's display name and key name without
+// repeating the key name when the display name already contains it
+// (e.g. "SysMain", "Microsoft Edge Update Service (edgeupdate)").
+func serviceLabel(display, name string) string {
+	if display == "" || strings.EqualFold(display, name) {
+		return name
+	}
+	if strings.Contains(strings.ToLower(display), "("+strings.ToLower(name)+")") {
+		return display
+	}
+	return display + " (" + name + ")"
+}
