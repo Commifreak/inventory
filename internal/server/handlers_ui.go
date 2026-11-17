@@ -293,6 +293,7 @@ func (w *webUI) handleDevice(rw http.ResponseWriter, r *http.Request) {
 		if sw, ok := decodeSnap[protocol.SoftwareData](snaps, protocol.CollectSoftware); ok {
 			sort.Slice(sw.Items, func(i, j int) bool { return strings.ToLower(sw.Items[i].Name) < strings.ToLower(sw.Items[j].Name) })
 			data["Software"] = sw
+			data["Office"] = s.eol.OfficeLookup(sw.Items)
 		}
 		changes, _ := s.store.SoftwareChanges(ctx, d.ID, 300)
 		data["Changes"] = changes

@@ -74,6 +74,8 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Pending for", "days", 7}}},
 	{ID: "os_eol", Group: "Updates", Title: "Operating system end of support", Description: "The OS version is out of support or will be within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Warn before", "days", 30}}},
+	{ID: "office_eol", Group: "Updates", Title: "Office end of support", Description: "An installed Office, Visio or Project release (2007-2024) is out of support or will be within the given time. Microsoft 365 Apps are not affected.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Warn before", "days", 30}}},
 
 	{ID: "defender_off", Group: "Security", Title: "Defender disabled", Description: "Microsoft Defender antivirus or real-time protection is off (passive mode is ignored).",
 		DefaultEnabled: true, DefaultSeverity: SevCritical},
@@ -317,6 +319,24 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 					}
 				} else if info.IsEOL {
 					ev.add(rc, "os_eol", "", "%s is out of support.", info.Label)
+				}
+			}
+		}
+	}
+
+	// --- software ---
+	if sw, ok := decodeSnap[protocol.SoftwareData](snaps, protocol.CollectSoftware); ok {
+		if rc, on := rule("office_eol"); on {
+			ev.ok("office_eol")
+			for _, o := range s.eol.OfficeLookup(sw.Items) {
+				names := strings.Join(o.Products, ", ")
+				switch {
+				case !o.EOL.IsZero() && o.EOL.Before(now):
+					ev.add(rc, "office_eol", o.Cycle, "%s is out of support since %s.", names, o.EOL.Format("2006-01-02"))
+				case !o.EOL.IsZero() && o.EOL.Sub(now) < time.Duration(p(rc, "days")*24*float64(time.Hour)):
+					ev.add(rc, "office_eol", o.Cycle, "%s goes out of support on %s.", names, o.EOL.Format("2006-01-02"))
+				case o.EOL.IsZero() && o.IsEOL:
+					ev.add(rc, "office_eol", o.Cycle, "%s is out of support.", names)
 				}
 			}
 		}

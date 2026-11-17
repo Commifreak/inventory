@@ -14,7 +14,7 @@ alert rules, intervals, update policy, users) is configured in the web UI.
 | `LOCAL_LOGIN` | `true` | `false` disables password login (requires OIDC). |
 | `SESSION_LIFETIME` | `12h` | Idle lifetime of UI sessions (Go duration). |
 | `ENCRYPTION_KEY` | generated | Base64 32-byte key for stored secrets (SMTP password). Normally generated in `DATA_DIR/secrets/encryption.key`. |
-| `EOL_FETCH` | `true` | Fetch end-of-support dates from endoflife.date daily (needs outbound HTTPS). |
+| `EOL_FETCH` | `true` | Fetch end-of-support dates (OS and Office) from endoflife.date daily (needs outbound HTTPS); a built-in table covers Windows and Office otherwise. |
 | `LOG_LEVEL` | `info` | `debug` for more output. |
 | `OIDC_ISSUER` | – | OpenID Connect issuer URL. Enables single sign-on. |
 | `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | – | Client credentials. |

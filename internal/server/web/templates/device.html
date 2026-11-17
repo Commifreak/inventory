@@ -259,6 +259,15 @@
 {{/* ================================================================== */}}
 {{define "tab_software"}}{{$d := .Data}}
 {{template "sectionmeta" index $d.Snaps "software"}}
+{{with $d.Office}}
+<section class="card">
+  <h2>Office support</h2>
+  <dl>{{range .}}
+    <dt>Office {{.Cycle}}</dt><dd>{{if .IsEOL}}<span class="badge st-critical">ended{{if not .EOL.IsZero}} {{fmtDate .EOL}}{{end}}</span>{{else if not .EOL.IsZero}}until {{fmtDate .EOL}}{{else}}supported{{end}}
+      <div class="sub">{{join .Products ", "}}</div></dd>{{end}}
+  </dl>
+</section>
+{{end}}
 {{with $d.Software}}
 <section class="card">
   <div class="cardhead"><h2>Installed software ({{len .Items}})</h2><input type="search" placeholder="Filter …" data-filter="#swtable"></div>

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -40,9 +42,12 @@ type EOLInfo struct {
 	IsEOL bool      // set when the source only says "true"
 }
 
-var eolProducts = []string{"windows", "debian", "ubuntu", "fedora", "rhel", "rocky-linux", "almalinux", "centos-stream", "opensuse", "linuxmint", "pop-os", "alpine", "macos"}
+var eolProducts = []string{"windows", "debian", "ubuntu", "fedora", "rhel", "rocky-linux", "almalinux", "centos-stream", "opensuse", "linuxmint", "pop-os", "alpine", "macos", "office"}
 
-// Built-in fallback for Windows client releases (Home/Pro = w, Enterprise/Education = e).
+// Built-in fallback (Microsoft lifecycle dates) used when endoflife.date
+// cannot be reached or does not list a cycle. Windows client releases:
+// Home/Pro = w, Enterprise/Education = e. Office: end of (extended) support
+// of the perpetual releases; Microsoft 365 Apps have no end date.
 var eolFallback = map[string][]eolCycle{
 	"windows": {
 		{"10-22h2-w", json.RawMessage(`"2025-10-14"`)}, {"10-22h2-e", json.RawMessage(`"2025-10-14"`)},
@@ -51,6 +56,12 @@ var eolFallback = map[string][]eolCycle{
 		{"11-23h2-w", json.RawMessage(`"2025-11-11"`)}, {"11-23h2-e", json.RawMessage(`"2026-11-10"`)},
 		{"11-24h2-w", json.RawMessage(`"2026-10-13"`)}, {"11-24h2-e", json.RawMessage(`"2027-10-12"`)},
 		{"11-25h2-w", json.RawMessage(`"2027-10-12"`)}, {"11-25h2-e", json.RawMessage(`"2028-10-10"`)},
+	},
+	"office": {
+		{"2007", json.RawMessage(`"2017-10-10"`)}, {"2010", json.RawMessage(`"2020-10-13"`)},
+		{"2013", json.RawMessage(`"2023-04-11"`)}, {"2016", json.RawMessage(`"2025-10-14"`)},
+		{"2019", json.RawMessage(`"2025-10-14"`)}, {"2021", json.RawMessage(`"2026-10-13"`)},
+		{"2024", json.RawMessage(`"2029-10-09"`)},
 	},
 }
 
@@ -123,10 +134,22 @@ func (e *EOLData) cycles(product string) []eolCycle {
 	e.mu.RLock()
 	c := e.prods[product]
 	e.mu.RUnlock()
-	if len(c) == 0 {
-		c = eolFallback[product]
-	}
 	return c
+}
+
+// lookupCycle finds the first candidate cycle, preferring the fetched data
+// and falling back to the built-in table.
+func (e *EOLData) lookupCycle(product string, candidates []string) (t time.Time, isEOL, ok bool) {
+	for _, cyc := range [][]eolCycle{e.cycles(product), eolFallback[product]} {
+		for _, cand := range candidates {
+			for _, c := range cyc {
+				if strings.EqualFold(c.Cycle, cand) {
+					return parseEOL(c.EOL)
+				}
+			}
+		}
+	}
+	return time.Time{}, false, false
 }
 
 func parseEOL(raw json.RawMessage) (time.Time, bool, bool) {
@@ -151,19 +174,54 @@ func (e *EOLData) Lookup(os protocol.OSInfo) (EOLInfo, bool) {
 	if product == "" {
 		return EOLInfo{}, false
 	}
-	cyc := e.cycles(product)
-	for _, cand := range candidates {
-		for _, c := range cyc {
-			if strings.EqualFold(c.Cycle, cand) {
-				t, isEOL, ok := parseEOL(c.EOL)
-				if !ok {
-					return EOLInfo{}, false
-				}
-				return EOLInfo{Label: label, EOL: t, IsEOL: isEOL}, true
-			}
-		}
+	t, isEOL, ok := e.lookupCycle(product, candidates)
+	if !ok {
+		return EOLInfo{}, false
 	}
-	return EOLInfo{}, false
+	return EOLInfo{Label: label, EOL: t, IsEOL: isEOL}, true
+}
+
+// OfficeEOL is the support status of an installed Office release.
+type OfficeEOL struct {
+	Cycle    string   // release year, e.g. "2021"
+	Products []string // installed product names of that release
+	EOLInfo
+}
+
+// officeName matches perpetual Office, Visio and Project releases by their
+// uninstall name, e.g. "Microsoft Office LTSC Professional Plus 2021 - de-de",
+// "Microsoft Office Home and Business 2019", "Microsoft Visio Standard 2016".
+var officeName = regexp.MustCompile(`(?i)^microsoft (office|visio|project)\b.*\b(2007|2010|2013|2016|2019|2021|2024)\b`)
+
+// officeIgnore skips components that are not the product itself.
+var officeIgnore = regexp.MustCompile(`(?i)365|add-?in|proofing|language|mui|runtime|click-to-run|web components|shared|validation`)
+
+// OfficeLookup returns the support status of the Office releases found in a
+// software inventory, one entry per release year.
+func (e *EOLData) OfficeLookup(items []protocol.SoftwareItem) []OfficeEOL {
+	var out []OfficeEOL
+	idx := map[string]int{}
+	for _, it := range items {
+		m := officeName.FindStringSubmatch(it.Name)
+		if m == nil || officeIgnore.MatchString(it.Name) {
+			continue
+		}
+		year := m[2]
+		if i, ok := idx[year]; ok {
+			if !slices.Contains(out[i].Products, it.Name) {
+				out[i].Products = append(out[i].Products, it.Name)
+			}
+			continue
+		}
+		t, isEOL, ok := e.lookupCycle("office", []string{year, year + "-ltsc", "ltsc-" + year})
+		if !ok {
+			continue
+		}
+		idx[year] = len(out)
+		out = append(out, OfficeEOL{Cycle: year, Products: []string{it.Name}, EOLInfo: EOLInfo{Label: "Office " + year, EOL: t, IsEOL: isEOL}})
+	}
+	slices.SortFunc(out, func(a, b OfficeEOL) int { return strings.Compare(a.Cycle, b.Cycle) })
+	return out
 }
 
 // eolKey maps an OS to an endoflife.date product and cycle candidates.

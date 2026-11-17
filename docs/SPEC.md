@@ -111,7 +111,9 @@ device offline (default 7 days, per-device override), agent update failed,
 SMART failed / reallocated / pending / uncorrectable / temperature / NVMe wear /
 NVMe critical, low disk space, update failed, updates pending too long, update
 check failing, reboot pending too long, OS end of support (endoflife.date, cached,
-built-in Windows fallback), Defender off, Defender signatures old, Secure Boot
+built-in Windows fallback), Office/Visio/Project 2007–2024 end of support
+(detected from the software inventory; endoflife.date "office" with built-in
+fallback; Microsoft 365 Apps excluded), Defender off, Defender signatures old, Secure Boot
 2023 certificates missing, not activated, system drive not encrypted (off by
 default), battery worn (off by default), bluescreen, disk errors, OOM,
 undervoltage (Raspberry Pi; kernel events or undervoltage present right now).

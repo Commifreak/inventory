@@ -121,7 +121,7 @@ func sampleReport(now time.Time) protocol.Report {
 		protocol.CollectUpdates: {CollectedAt: now, Data: protocol.UpdatesData{Manager: "Windows Update", PendingCount: 2, RebootRequired: true,
 			Pending: []protocol.PendingUpdate{{Title: "2026-11 Cumulative Update", KB: "KB5000001"}},
 			History: []protocol.UpdateHistoryEntry{{Title: "KB123", Date: now.Add(-time.Hour), Result: "Failed", HResult: "0x80070002"}}}},
-		protocol.CollectSoftware:  {CollectedAt: now, Data: protocol.SoftwareData{Items: []protocol.SoftwareItem{{Name: "7-Zip", Version: "23.01", Source: "registry", Scope: "machine"}}}},
+		protocol.CollectSoftware:  {CollectedAt: now, Data: protocol.SoftwareData{Items: []protocol.SoftwareItem{{Name: "7-Zip", Version: "23.01", Source: "registry", Scope: "machine"}, officeItem}}},
 		protocol.CollectAutostart: {CollectedAt: now, Data: protocol.AutostartData{Items: []protocol.AutostartItem{{Name: "OneDrive", Command: "onedrive.exe /background", Location: `HKCU\Run`, Enabled: true}}}},
 		protocol.CollectEvents: {CollectedAt: now, Data: protocol.EventsData{Since: now.Add(-24 * time.Hour), Events: []protocol.CriticalEvent{
 			{Kind: protocol.EventBluescreen, Time: now.Add(-2 * time.Hour), Source: "BugCheck", EventID: 1001, Message: "The computer has rebooted from a bugcheck.", Key: "rec1"},
@@ -240,7 +240,7 @@ func TestEndToEnd(t *testing.T) {
 	for _, a := range open {
 		rules[a.Rule] = true
 	}
-	for _, want := range []string{"smart_reallocated", "disk_space", "defender_off", "secureboot_certs", "updates_failed", "bluescreen", "os_eol", "undervoltage"} {
+	for _, want := range []string{"smart_reallocated", "disk_space", "defender_off", "secureboot_certs", "updates_failed", "bluescreen", "os_eol", "office_eol", "undervoltage"} {
 		if !rules[want] {
 			t.Errorf("expected alert %s, open: %v", want, rules)
 		}
@@ -260,7 +260,7 @@ func TestEndToEnd(t *testing.T) {
 	// Software change detection.
 	rep := sampleReport(now.Add(time.Minute))
 	rep.Sections = map[string]protocol.Section{protocol.CollectSoftware: {CollectedAt: now.Add(time.Minute), Data: protocol.SoftwareData{Items: []protocol.SoftwareItem{
-		{Name: "7-Zip", Version: "24.08", Source: "registry", Scope: "machine"}, {Name: "VLC", Version: "3.0", Source: "registry", Scope: "machine"}}}}}
+		{Name: "7-Zip", Version: "24.08", Source: "registry", Scope: "machine"}, {Name: "VLC", Version: "3.0", Source: "registry", Scope: "machine"}, officeItem}}}}
 	postJSON(t, api+"/report", cred, rep, nil)
 	changes, _ := s.store.SoftwareChanges(ctx, er.DeviceID, 10)
 	if len(changes) != 2 {
@@ -286,6 +286,9 @@ func TestEndToEnd(t *testing.T) {
 	}
 	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=overview"); !strings.Contains(p, "not applicable") {
 		t.Errorf("third-party CA shown as missing although not applicable")
+	}
+	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=software"); !strings.Contains(p, "Office support") || !strings.Contains(p, "ended 2025-10-14") {
+		t.Errorf("office support status missing on the software tab")
 	}
 	if raw := get(t, c, ts.URL+"/devices/"+er.DeviceID+"/raw.json"); !strings.Contains(raw, `"sections"`) || !strings.Contains(raw, "Samsung SSD 870") {
 		t.Errorf("raw export incomplete")
@@ -319,6 +322,34 @@ func get(t *testing.T, c *http.Client, url string) string {
 		t.Fatalf("GET %s: %d %s", url, resp.StatusCode, b)
 	}
 	return string(b)
+}
+
+var officeItem = protocol.SoftwareItem{Name: "Microsoft Office Professional Plus 2016", Version: "16.0.4266.1001", Source: "registry", Scope: "machine", Arch: "x86"}
+
+func TestOfficeLookup(t *testing.T) {
+	e := &EOLData{prods: map[string][]eolCycle{}}
+	sw := func(n string) protocol.SoftwareItem { return protocol.SoftwareItem{Name: n} }
+	got := e.OfficeLookup([]protocol.SoftwareItem{
+		sw("Microsoft Office LTSC Professional Plus 2021 - de-de"),
+		sw("Microsoft Visio Standard 2021 - de-de"),
+		sw("Microsoft Office Home and Business 2019 - en-us"),
+		sw("Microsoft 365 Apps for business - de-de"),
+		sw("Microsoft Teams Meeting Add-in for Microsoft Office"),
+		sw("Microsoft Office Proofing Tools 2016 - Deutsch"),
+		sw("Microsoft Office 2024 Something"),
+		sw("7-Zip 23.01"),
+	})
+	if len(got) != 3 || got[0].Cycle != "2019" || got[1].Cycle != "2021" || got[2].Cycle != "2024" {
+		t.Fatalf("unexpected result: %+v", got)
+	}
+	if len(got[1].Products) != 2 || got[1].EOL.Format("2006-01-02") != "2026-10-13" {
+		t.Errorf("office 2021: %+v", got[1])
+	}
+	// Fetched data takes precedence over the built-in table.
+	e.prods["office"] = []eolCycle{{Cycle: "2024", EOL: []byte(`"2030-01-01"`)}}
+	if got := e.OfficeLookup([]protocol.SoftwareItem{sw("Microsoft Office Standard 2024")}); len(got) != 1 || got[0].EOL.Year() != 2030 {
+		t.Errorf("fetched data not used: %+v", got)
+	}
 }
 
 func TestCompareVersions(t *testing.T) {
