@@ -103,6 +103,11 @@ func collectSystemDarwin(ctx context.Context, _ *State) (any, []string, error) {
 		}
 	}
 
+	// Application firewall: "Firewall is enabled. (State = 1)"; state 2 = block all.
+	if out, err := runCmd(ctx, "/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate"); err == nil {
+		info.Security.Firewall = []protocol.FirewallProfile{{Name: "Application firewall", Active: true,
+			Enabled: strings.Contains(out, "State = 1") || strings.Contains(out, "State = 2") || strings.Contains(out, "enabled")}}
+	}
 	if err := darwinStorageAndMemory(ctx, &info.Hardware); err != nil {
 		warns = append(warns, "storage/memory: "+err.Error())
 	}

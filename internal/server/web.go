@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -106,6 +107,8 @@ func newWebUI(s *Server) (*webUI, error) {
 			}
 			return fmt.Sprintf("%g", f)
 		},
+		"ruleCatalog": func() []RuleDef { return RuleCatalog },
+		"hasString":   func(list []string, v string) bool { return slices.Contains(list, v) },
 		"ruleTitle": func(id string) string {
 			if d := ruleDef(id); d != nil {
 				return d.Title

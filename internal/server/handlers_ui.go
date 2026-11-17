@@ -40,6 +40,7 @@ func (w *webUI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /devices/{id}", s.requireUser(w.handleDevice))
 	mux.HandleFunc("GET /devices/{id}/raw.json", s.requireUser(w.handleDeviceRaw))
 	mux.HandleFunc("POST /devices/{id}/settings", s.requireUser(w.handleDeviceSettings))
+	mux.HandleFunc("POST /devices/{id}/rules", s.requireUser(w.handleDeviceRules))
 	mux.HandleFunc("POST /devices/{id}/update-now", s.requireUser(w.handleDeviceUpdateNow))
 	mux.HandleFunc("POST /devices/{id}/collect", s.requireUser(w.handleDeviceCollect))
 	mux.HandleFunc("POST /devices/{id}/revoke", s.requireUser(w.handleDeviceRevoke))
@@ -385,6 +386,28 @@ func addTrend(m map[string][]float64, key string, v *int64) {
 	if v != nil {
 		m[key] = append(m[key], float64(*v))
 	}
+}
+
+// handleDeviceRules saves the alert rules disabled for a device.
+func (w *webUI) handleDeviceRules(rw http.ResponseWriter, r *http.Request) {
+	d := w.loadDevice(rw, r)
+	if d == nil {
+		return
+	}
+	_ = r.ParseForm()
+	var rules []string
+	for _, id := range r.PostForm["disabled"] {
+		if ruleDef(id) != nil && !slices.Contains(rules, id) {
+			rules = append(rules, id)
+		}
+	}
+	if err := w.s.store.SetDisabledRules(r.Context(), d.ID, rules); err != nil {
+		redirectError(rw, r, "/devices/"+d.ID+"?tab=alerts", err.Error())
+		return
+	}
+	w.s.store.Audit(r.Context(), actor(r), "device.rules", fmt.Sprintf("%s: disabled %s", d.ID, strings.Join(rules, ", ")))
+	w.s.kickAlerts(d.ID)
+	redirectFlash(rw, r, "/devices/"+d.ID+"?tab=alerts", "Alert rules for this device saved.")
 }
 
 func (w *webUI) handleDeviceSettings(rw http.ResponseWriter, r *http.Request) {

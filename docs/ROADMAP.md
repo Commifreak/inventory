@@ -30,6 +30,9 @@
 - Remote support: not built into the agent (read-only principle, attack surface);
   possible later: show the RustDesk/MeshCentral ID of a client with a connect link
 - RAID controller details via vendor tools (storcli etc.)
+- Read-only system checks on demand or monthly: `chkdsk` without repair, DISM
+  `/checkhealth`/`/scanhealth` (via dismapi), `sfc /verifyonly` (output is localized –
+  CBS log parsing needed). Repairs stay manual (read-only principle).
 
 ## Decided against
 

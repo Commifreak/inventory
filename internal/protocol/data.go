@@ -154,6 +154,27 @@ type SecurityInfo struct {
 	Defender   *DefenderInfo   `json:"defender,omitempty"`
 	Activation *ActivationInfo `json:"activation,omitempty"`
 	TPM        *TPMInfo        `json:"tpm,omitempty"`
+	// Antivirus products registered with the Windows Security Center
+	// (Defender and third-party scanners). Nil if not available.
+	Antivirus []AntivirusProduct `json:"antivirus,omitempty"`
+	// Firewall profiles (Windows: Domain/Private/Public; macOS: application
+	// firewall). Nil if not collected (Linux).
+	Firewall []FirewallProfile `json:"firewall,omitempty"`
+}
+
+// AntivirusProduct is an antivirus product known to the Security Center.
+type AntivirusProduct struct {
+	Name     string `json:"name"`
+	Enabled  bool   `json:"enabled"`
+	UpToDate bool   `json:"up_to_date"`
+	Defender bool   `json:"defender,omitempty"`
+}
+
+// FirewallProfile is the state of a firewall profile.
+type FirewallProfile struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Active  bool   `json:"active,omitempty"` // profile of a currently connected network
 }
 
 type SecureBootInfo struct {
@@ -183,6 +204,25 @@ type DefenderInfo struct {
 	SignatureVersion   string    `json:"signature_version,omitempty"`
 	LastQuickScan      time.Time `json:"last_quick_scan,omitzero"`
 	TamperProtection   *bool     `json:"tamper_protection,omitempty"`
+	// Exclusions configured in Defender ("path:C:\\x", "ext:.tmp",
+	// "process:x.exe", "ip:1.2.3.4"). Nil if they could not be read.
+	Exclusions []string `json:"exclusions"`
+	// Detections of the last 90 days, newest first.
+	Detections []ThreatDetection `json:"detections,omitempty"`
+}
+
+// ThreatDetection is a threat found by Defender.
+type ThreatDetection struct {
+	ID         string    `json:"id"` // detection ID, stable across reports
+	Time       time.Time `json:"time,omitzero"`
+	StatusTime time.Time `json:"status_time,omitzero"`
+	Threat     string    `json:"threat"`
+	Severity   string    `json:"severity,omitempty"` // low, moderate, high, severe
+	Status     string    `json:"status"`             // quarantined, removed, cleaned, blocked, allowed, detected, failed ...
+	Resolved   bool      `json:"resolved"`           // threat was removed, quarantined, cleaned or blocked
+	Resources  []string  `json:"resources,omitempty"`
+	User       string    `json:"user,omitempty"`
+	Process    string    `json:"process,omitempty"`
 }
 
 type ActivationInfo struct {
@@ -385,6 +425,12 @@ const (
 	EventOOM        = "oom"
 	// EventUndervoltage: Raspberry Pi power supply voltage too low.
 	EventUndervoltage = "undervoltage"
+
+	// Created by the server when it notices a change between reports.
+	EventMalware           = "malware"            // Defender detection
+	EventAdminAdded        = "admin_added"        // new local administrator
+	EventAutostartAdded    = "autostart_added"    // new non-Windows autostart entry
+	EventDefenderExclusion = "defender_exclusion" // new Defender exclusion
 )
 
 type CriticalEvent struct {

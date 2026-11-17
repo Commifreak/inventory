@@ -91,8 +91,11 @@
           {{if contains (lower .RunningMode) "passive"}}<span class="badge st-info">passive</span>
           {{else if and .AntivirusEnabled .RealTimeProtection}}<span class="badge st-ok">active</span>
           {{else}}<span class="badge st-critical">disabled</span>{{end}}
-          <div class="sub">Mode: {{.RunningMode}} · real-time {{if .RealTimeProtection}}on{{else}}off{{end}} · signatures {{.SignatureAgeDays}} day(s) old{{if isSet .TamperProtection}} · tamper protection {{if derefB .TamperProtection}}on{{else}}off{{end}}{{end}}</div>{{end}}</dd>
+          <div class="sub">Mode: {{.RunningMode}} · real-time {{if .RealTimeProtection}}on{{else}}off{{end}} · signatures {{.SignatureAgeDays}} day(s) old{{if isSet .TamperProtection}} · tamper protection {{if derefB .TamperProtection}}on{{else}}off{{end}}{{end}}</div>
+          {{if .Exclusions}}<div class="sub">Exclusions: <span class="mono">{{join .Exclusions ", "}}</span></div>{{end}}{{end}}</dd>
       {{end}}
+      {{with .Security.Antivirus}}<dt>Antivirus</dt><dd>{{range .}}<div>{{.Name}} {{if .Enabled}}<span class="badge st-ok">on</span>{{else}}<span class="badge">off</span>{{end}}{{if and .Enabled (not .UpToDate)}} <span class="badge st-warning">outdated</span>{{end}}</div>{{end}}</dd>{{end}}
+      {{with .Security.Firewall}}<dt>Firewall</dt><dd>{{range .}}<span class="fwprofile">{{.Name}} {{if .Enabled}}<span class="badge st-ok">on</span>{{else}}<span class="badge st-warning">off</span>{{end}}{{if .Active}} <span class="sub">connected</span>{{end}}</span> {{end}}</dd>{{end}}
       {{with .Security.Activation}}<dt>Activation</dt><dd>{{if .Licensed}}<span class="badge st-ok">licensed</span>{{else}}<span class="badge st-warning">{{.Status}}</span>{{end}}{{if .Channel}} <span class="sub">{{.Channel}}</span>{{end}}</dd>{{end}}
       {{range .Volumes}}{{if .Encryption}}<dt>Encryption ({{.Mount}})</dt><dd>{{.Encryption}}</dd>{{end}}{{end}}
     </dl>
@@ -110,6 +113,16 @@
   </section>
 </div>
 
+{{with .Security.Defender}}{{with .Detections}}
+<section class="card">
+  <h2>Defender detections <span class="sub">(last 90 days)</span></h2>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Detected</th><th>Threat</th><th>Status</th><th>Resources</th><th>User / process</th></tr></thead><tbody>
+  {{range .}}<tr><td class="nowrap">{{fmtTime .Time}}</td><td>{{.Threat}}{{if .Severity}} <span class="sub">{{.Severity}}</span>{{end}}</td>
+    <td>{{if .Resolved}}<span class="badge st-ok">{{.Status}}</span>{{else}}<span class="badge st-critical">{{.Status}}</span>{{end}}</td>
+    <td class="mono small break">{{join .Resources ", "}}</td><td class="small">{{.User}}{{if .Process}}<div class="sub">{{.Process}}</div>{{end}}</td></tr>{{end}}
+  </tbody></table></div>
+</section>
+{{end}}{{end}}
 <section class="card">
   <h2>Volumes</h2>
   <div class="tablewrap"><table class="compact">
@@ -359,15 +372,16 @@
 {{define "tab_events"}}{{$d := .Data}}
 {{template "sectionmeta" index $d.Snaps "events"}}
 <section class="card">
-  <h2>Critical events (last 365 days)</h2>
+  <h2>Events (last 365 days)</h2>
+  <p class="hint">Critical system events reported by the agent, plus changes noticed by the server: new local administrators, new autostart entries, new Defender exclusions and Defender detections.</p>
   {{if $d.Events}}
   <div class="tablewrap"><table class="compact">
     <thead><tr><th>Time</th><th>Kind</th><th>Source</th><th>Message</th></tr></thead>
     <tbody>{{range $d.Events}}<tr><td class="nowrap">{{fmtTime .Time}}</td>
-      <td>{{if eq .Kind "bluescreen"}}<span class="badge st-critical">bluescreen</span>{{else if eq .Kind "disk_error"}}<span class="badge st-warning">disk error</span>{{else if eq .Kind "oom"}}<span class="badge st-warning">out of memory</span>{{else if eq .Kind "undervoltage"}}<span class="badge st-warning">undervoltage</span>{{else}}{{.Kind}}{{end}}</td>
+      <td>{{if eq .Kind "bluescreen"}}<span class="badge st-critical">bluescreen</span>{{else if eq .Kind "disk_error"}}<span class="badge st-warning">disk error</span>{{else if eq .Kind "oom"}}<span class="badge st-warning">out of memory</span>{{else if eq .Kind "undervoltage"}}<span class="badge st-warning">undervoltage</span>{{else if eq .Kind "malware"}}<span class="badge st-critical">malware</span>{{else if eq .Kind "admin_added"}}<span class="badge st-warning">new admin</span>{{else if eq .Kind "autostart_added"}}<span class="badge st-info">new autostart</span>{{else if eq .Kind "defender_exclusion"}}<span class="badge st-warning">Defender exclusion</span>{{else}}{{.Kind}}{{end}}</td>
       <td class="sub">{{.Source}}{{if .EventID}} · {{.EventID}}{{end}}{{if .Disk}} · {{.Disk}}{{end}}{{if .External}} <span class="badge" title="USB or removable disk - not counted by the default alert rule">external</span>{{end}}</td><td class="small break">{{.Message}}</td></tr>{{end}}</tbody>
   </table></div>
-  {{else}}<p class="muted">No bluescreens, disk errors, undervoltage or out-of-memory events recorded.</p>{{end}}
+  {{else}}<p class="muted">No events recorded.</p>{{end}}
 </section>
 {{end}}
 
@@ -383,6 +397,20 @@
       <td>{{ruleTitle .Rule}}</td><td class="small">{{.Message}}</td><td class="nowrap">{{fmtTime .OpenedAt}}</td><td class="nowrap">{{fmtTime .ResolvedAt}}</td></tr>{{end}}</tbody>
   </table></div>
   {{else}}<p class="muted">No alerts.</p>{{end}}
+</section>
+{{$dev := $d.D}}
+<section class="card">
+  <details {{if $dev.DisabledRules}}open{{end}}>
+    <summary><b>Rules for this device</b>{{if $dev.DisabledRules}} – {{len $dev.DisabledRules}} disabled{{end}}</summary>
+    <p class="hint">Rules checked here are not evaluated for this device (e.g. a firewall that is off on purpose); their open alerts are resolved. Global rule settings: <a href="/settings/alerts">Settings → Alert rules</a>.</p>
+    <form method="post" action="/devices/{{$dev.ID}}/rules">
+      {{template "csrf" .CSRF}}
+      <div class="rulechecks">
+      {{range ruleCatalog}}<label class="check"><input type="checkbox" name="disabled" value="{{.ID}}" {{if hasString $dev.DisabledRules .ID}}checked{{end}}> <span>{{.Title}} <span class="sub">{{.Group}}</span></span></label>{{end}}
+      </div>
+      <button class="primary">Save</button>
+    </form>
+  </details>
 </section>
 {{end}}
 

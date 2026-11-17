@@ -134,7 +134,15 @@ Microsoft 365 Apps excluded; the UI warns when endoflife.date could not
 be reached for 3 days), Defender off, Defender signatures old, Secure Boot
 2023 certificates missing, not activated, system drive not encrypted (off by
 default), battery worn (off by default), bluescreen, disk errors, OOM,
-undervoltage (Raspberry Pi; kernel events or undervoltage present right now).
+undervoltage (Raspberry Pi; kernel events or undervoltage present right now),
+no active antivirus / third-party antivirus outdated (Windows Security Center),
+firewall disabled (per profile), malware not removed / malware detected (Defender
+detections), new local administrator, new autostart entry (non-OS, RunOnce
+ignored), new Defender exclusion. "New" items are detected server-side against
+everything ever seen on the device (`seen_items`; the first report is the
+baseline, so entries that come and go with user logons do not alert) and stored
+as events. Every rule can be disabled per device (Alerts tab), e.g. for a
+firewall that is off on purpose.
 
 Notifications: one mail per device and evaluation with new/still open/resolved
 alerts, reminders every N hours (default 24), optional resolve mails, per-device mute.

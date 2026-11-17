@@ -59,6 +59,10 @@ jobs:
           $hw.memory_modules | Format-Table locator, installed, size_bytes, type, form_factor, speed_mts | Out-String
           $hw.slots | Format-Table designation, type, width, usage | Out-String
           $hw.storage_controllers | ConvertTo-Json -Depth 5
+          $sec = $r.sections.system.data.security
+          "antivirus:"; $sec.antivirus | Format-Table name, enabled, up_to_date, defender | Out-String
+          "firewall:"; $sec.firewall | Format-Table name, enabled, active | Out-String
+          "defender exclusions: $($sec.defender.exclusions -join ', ') / detections: $(@($sec.defender.detections).Count)"
           if ($p.ExitCode -ne 0) { exit 1 }
       - name: proxy
         shell: pwsh

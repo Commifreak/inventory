@@ -120,6 +120,7 @@ type Device struct {
 	AlertsMuted       bool
 	Notes             string
 	RevokedAt         time.Time
+	DisabledRules     []string // alert rules disabled for this device
 }
 
 // Name returns the display name or the hostname.
@@ -133,17 +134,17 @@ func (d Device) Name() string {
 const deviceCols = `id, hostname, display_name, os, arch, hardware_id, machine_id, credential_hash, enrollment_token_id,
  enrolled_at, last_seen_at, last_ip, agent_version, boot_time, clock_skew_sec, os_name, ring, pinned_version,
  update_now_version, update_target, update_state, update_error, update_changed_at, collect_now, offline_alert_hours,
- alerts_muted, notes, revoked_at`
+ alerts_muted, notes, revoked_at, disabled_rules`
 
 func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	var d Device
-	var dn, hw, mid, ip, av, osn, pin, unow, utarget, ust, uerr, cnow, notes sql.NullString
+	var dn, hw, mid, ip, av, osn, pin, unow, utarget, ust, uerr, cnow, notes, disabled sql.NullString
 	var tok, last, boot, skew, uchg, rev sql.NullInt64
 	var enrolled int64
 	err := row.Scan(&d.ID, &d.Hostname, &dn, &d.OS, &d.Arch, &hw, &mid, &d.CredentialHash, &tok,
 		&enrolled, &last, &ip, &av, &boot, &skew, &osn, &d.Ring, &pin,
 		&unow, &utarget, &ust, &uerr, &uchg, &cnow, &d.OfflineAlertHours,
-		&d.AlertsMuted, &notes, &rev)
+		&d.AlertsMuted, &notes, &rev, &disabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -157,6 +158,9 @@ func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	d.EnrolledAt = time.Unix(enrolled, 0)
 	d.LastSeenAt, d.BootTime, d.UpdateChangedAt, d.RevokedAt = tu(last), tu(boot), tu(uchg), tu(rev)
 	d.ClockSkewSec = skew.Int64
+	if disabled.String != "" {
+		d.DisabledRules = strings.Split(disabled.String, ",")
+	}
 	return &d, nil
 }
 
@@ -393,4 +397,32 @@ func (s *Store) GetAgentDiagnostics(ctx context.Context, deviceID string) (*Agen
 		return nil, err
 	}
 	return out, nil
+}
+
+// SetDisabledRules sets the alert rules disabled for a device.
+func (s *Store) SetDisabledRules(ctx context.Context, id string, rules []string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE devices SET disabled_rules=? WHERE id=?`, nullStr(strings.Join(rules, ",")), id)
+	return err
+}
+
+// MarkSeen records items of a kind for a device and returns those not seen
+// before. The first call per kind only records the baseline and returns
+// nothing.
+func (s *Store) MarkSeen(ctx context.Context, tx *sql.Tx, deviceID, kind string, items []string, at time.Time) ([]string, error) {
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM seen_items WHERE device_id=? AND kind=? AND item=''`, deviceID, kind).Scan(&n); err != nil {
+		return nil, err
+	}
+	baseline := n == 0
+	var added []string
+	for _, it := range append([]string{""}, items...) {
+		res, err := tx.ExecContext(ctx, `INSERT INTO seen_items(device_id, kind, item, first_seen) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, deviceID, kind, it, at.Unix())
+		if err != nil {
+			return nil, err
+		}
+		if c, _ := res.RowsAffected(); c > 0 && it != "" && !baseline {
+			added = append(added, it)
+		}
+	}
+	return added, nil
 }

@@ -357,8 +357,28 @@ func collectSystemWindows(ctx context.Context, _ *State) (any, []string, error) 
 		if m.AMRunningMode == "" && !m.AMServiceEnabled {
 			info.Security.Defender.RunningMode = "Disabled"
 		}
+		if dets, err := defenderDetections(); err == nil {
+			info.Security.Defender.Detections = dets
+		} else {
+			warn("defender detections", err)
+		}
+		if ex, err := defenderExclusions(); err == nil {
+			info.Security.Defender.Exclusions = ex
+		} else {
+			warn("defender exclusions", err)
+		}
 	} else {
 		info.Security.Defender = &protocol.DefenderInfo{Present: false}
+	}
+	if av, err := windowsAntivirus(); err == nil {
+		info.Security.Antivirus = av
+	} else {
+		warn("security center", err)
+	}
+	if fw, err := windowsFirewall(); err == nil {
+		info.Security.Firewall = fw
+	} else {
+		warn("firewall", err)
 	}
 	var lic []softwareLicensingProduct
 	if err := wmi.Query("SELECT Name, LicenseStatus, ProductKeyChannel FROM SoftwareLicensingProduct WHERE ApplicationID='55c92734-d682-4d71-983e-d6ec3f16059f' AND PartialProductKey IS NOT NULL", &lic); err == nil && len(lic) > 0 {

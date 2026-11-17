@@ -69,6 +69,9 @@ func (s *Server) derive(ctx context.Context, tx *sql.Tx, d *store.Device, name s
 				return nil, err
 			}
 		}
+		if err := s.systemChanges(ctx, tx, d.ID, v, sec.CollectedAt, now); err != nil {
+			return nil, err
+		}
 		return json.Marshal(v)
 
 	case protocol.CollectSMART:
@@ -129,6 +132,9 @@ func (s *Server) derive(ctx context.Context, tx *sql.Tx, d *store.Device, name s
 	case protocol.CollectAutostart:
 		var v protocol.AutostartData
 		if err := json.Unmarshal(sec.Data, &v); err != nil {
+			return nil, err
+		}
+		if err := s.autostartChanges(ctx, tx, d.ID, v, sec.CollectedAt, now); err != nil {
 			return nil, err
 		}
 		return json.Marshal(v)

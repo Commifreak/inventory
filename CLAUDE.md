@@ -42,7 +42,7 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 | `cmd/inventory-server`, `cmd/inventory-agent`, `cmd/inventory-release` | entry points (server, agent CLI/installer, manifest + signing tool) |
 | `internal/protocol` | wire format shared by agent and server (`data.go` = collector payloads) |
 | `internal/server` | HTTP handlers, ingest, alert rules (`alerts.go` catalog), update targeting (`agents.go`), end-of-support data (`eol.go`), OIDC, web UI (`web/templates`, `web/static`) |
-| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0004_*.sql`) |
+| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0005_*.sql`) |
 | `internal/agent` | agent loop, self-update, collectors per OS (`*_windows.go`, `*_linux.go`, `*_darwin.go`), installers; shared parsers: `smbios.go` (memory/slots), `sysprofiler.go` (macOS), `proxy.go` (system proxy), `diag.go` (agent diagnostics) |
 | `internal/release` | Ed25519 signing; trusted public key in `keys/official.pub` |
 | `internal/tag` | install tag (server URL + enrollment token) appended to Windows installers |
@@ -74,6 +74,9 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 - The agent uses the system proxy (env → Windows WinHTTP → user WinINet incl. PAC/WPAD;
   Linux `/etc/environment`; macOS `scutil`). Warnings/errors of the agent are kept in
   `diag.json` and sent with every check-in (shown on the Agent tab).
+- Change alerts (new admin/autostart/Defender exclusion) compare against everything ever seen
+  per device (`seen_items`, first report = baseline) and are stored as events; evaluate them
+  in the event-rule loop. Rules can be disabled per device (`devices.disabled_rules`).
 - Rejected enrollments/installer downloads (unknown/revoked token) are logged to the server
   log and audit log with only a token prefix.
 - Tests must not depend on the host (e.g. `pci.ids`, `/etc/environment`) and must not write

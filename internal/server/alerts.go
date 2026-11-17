@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -81,6 +82,14 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevCritical},
 	{ID: "defender_signatures", Group: "Security", Title: "Defender signatures outdated", Description: "Antivirus signatures older than the given age.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Older than", "days", 7}}},
+	{ID: "av_off", Group: "Security", Title: "No active antivirus", Description: "None of the antivirus products registered with the Windows Security Center (Defender or third-party) is active.",
+		DefaultEnabled: true, DefaultSeverity: SevCritical},
+	{ID: "av_outdated", Group: "Security", Title: "Third-party antivirus outdated", Description: "An active third-party antivirus product reports outdated signatures (Defender has its own rule).",
+		DefaultEnabled: true, DefaultSeverity: SevWarning},
+	{ID: "firewall_off", Group: "Security", Title: "Firewall disabled", Description: "The firewall is off for a network profile (Windows: domain/private/public; macOS: application firewall). Disable the rule per device where this is intended.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning},
+	{ID: "malware_active", Group: "Security", Title: "Malware not removed", Description: "Microsoft Defender detected a threat within the given time that was not removed, quarantined or blocked (e.g. allowed or removal failed).",
+		DefaultEnabled: true, DefaultSeverity: SevCritical, Params: []ParamDef{{"days", "Within", "days", 30}}},
 	{ID: "secureboot_certs", Group: "Security", Title: "Secure Boot 2023 certificates missing", Description: "Secure Boot is enabled but the 'Windows UEFI CA 2023' certificate is not in the UEFI db.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning},
 	{ID: "not_activated", Group: "Security", Title: "Windows not activated", Description: "Windows reports no valid license.",
@@ -96,6 +105,14 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}, {"min", "At least", "events", 1}}},
 	{ID: "undervoltage", Group: "Events", Title: "Undervoltage (Raspberry Pi)", Description: "The power supply voltage dropped too low within the given time, or is too low right now. Undervoltage corrupts SD cards.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
+	{ID: "malware_detected", Group: "Events", Title: "Malware detected", Description: "Microsoft Defender detected a threat within the given time, also if it was removed.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 336}}},
+	{ID: "admin_added", Group: "Events", Title: "New local administrator", Description: "An account was added to the local administrators within the given time.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 168}}},
+	{ID: "autostart_added", Group: "Events", Title: "New autostart entry", Description: "A program outside of the OS was added to the autostart (Run keys, services, logon/boot tasks) within the given time. Installers create such entries too.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 168}}},
+	{ID: "defender_exclusion_added", Group: "Events", Title: "New Defender exclusion", Description: "A path, file type, process or IP address was excluded from Microsoft Defender scanning within the given time – a common malware technique.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 336}}},
 	{ID: "oom", Group: "Events", Title: "Out of memory", Description: "The kernel killed processes because memory ran out (Linux).",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
 }
@@ -159,7 +176,7 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 	ev := &evaluation{evaluated: map[string]bool{}}
 	rule := func(id string) (RuleConfig, bool) {
 		rc := as.Rules[id]
-		if !rc.Enabled {
+		if !rc.Enabled || slices.Contains(d.DisabledRules, id) {
 			ev.ok(id) // disabled rules resolve their alerts
 			return rc, false
 		}
@@ -272,6 +289,48 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 			ev.ok("defender_signatures")
 			if df := sec.Defender; df != nil && df.Present && df.AntivirusEnabled && !strings.Contains(strings.ToLower(df.RunningMode), "passive") && float64(df.SignatureAgeDays) > p(rc, "days") {
 				ev.add(rc, "defender_signatures", "", "Defender signatures are %d days old.", df.SignatureAgeDays)
+			}
+		}
+		if rc, on := rule("av_off"); on && len(sec.Antivirus) > 0 {
+			ev.ok("av_off")
+			active := false
+			var names []string
+			for _, a := range sec.Antivirus {
+				active = active || a.Enabled
+				names = append(names, a.Name)
+			}
+			if !active {
+				ev.add(rc, "av_off", "", "No antivirus product is active (registered: %s).", strings.Join(names, ", "))
+			}
+		}
+		if rc, on := rule("av_outdated"); on && len(sec.Antivirus) > 0 {
+			ev.ok("av_outdated")
+			for _, a := range sec.Antivirus {
+				if a.Enabled && !a.Defender && !a.UpToDate {
+					ev.add(rc, "av_outdated", a.Name, "%s reports outdated signatures.", a.Name)
+				}
+			}
+		}
+		if rc, on := rule("firewall_off"); on && len(sec.Firewall) > 0 {
+			ev.ok("firewall_off")
+			for _, f := range sec.Firewall {
+				if !f.Enabled {
+					msg := "Firewall is off: " + f.Name
+					if f.Active {
+						msg += " (profile of a connected network)"
+					}
+					ev.add(rc, "firewall_off", f.Name, "%s.", msg)
+				}
+			}
+		}
+		if rc, on := rule("malware_active"); on && sec.Defender != nil && sec.Defender.Present {
+			ev.ok("malware_active")
+			cut := now.Add(-time.Duration(p(rc, "days") * 24 * float64(time.Hour)))
+			for _, det := range sec.Defender.Detections {
+				if det.Resolved || (!det.Time.IsZero() && det.Time.Before(cut)) {
+					continue
+				}
+				ev.add(rc, "malware_active", det.ID, "Microsoft Defender: %s – %s (%s).", det.Threat, det.Status, strings.Join(det.Resources, ", "))
 			}
 		}
 		if rc, on := rule("secureboot_certs"); on {
@@ -392,11 +451,18 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 	}
 
 	// --- events ---
-	for _, it := range []struct{ rule, kind, label string }{
-		{"bluescreen", protocol.EventBluescreen, "bluescreen(s)"},
-		{"disk_errors", protocol.EventDiskError, "disk error event(s)"},
-		{"oom", protocol.EventOOM, "out-of-memory kill(s)"},
-		{"undervoltage", protocol.EventUndervoltage, "undervoltage event(s)"},
+	for _, it := range []struct {
+		rule, kind, label string
+		details           bool // list the event messages
+	}{
+		{"bluescreen", protocol.EventBluescreen, "bluescreen(s)", false},
+		{"disk_errors", protocol.EventDiskError, "disk error event(s)", false},
+		{"oom", protocol.EventOOM, "out-of-memory kill(s)", false},
+		{"undervoltage", protocol.EventUndervoltage, "undervoltage event(s)", false},
+		{"malware_detected", protocol.EventMalware, "malware detection(s)", true},
+		{"admin_added", protocol.EventAdminAdded, "new local administrator(s)", true},
+		{"autostart_added", protocol.EventAutostartAdded, "new autostart entry/entries", true},
+		{"defender_exclusion_added", protocol.EventDefenderExclusion, "new Defender exclusion(s)", true},
 	} {
 		rc, on := rule(it.rule)
 		if !on {
@@ -415,6 +481,9 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 		switch {
 		case float64(n) >= min:
 			msg := fmt.Sprintf("%d %s in the last %.0f hours.", n, it.label, hours)
+			if it.details {
+				msg += eventDetails(ctx, s.store, d.ID, it.kind, now.Add(-time.Duration(hours*float64(time.Hour))))
+			}
 			if it.rule == "undervoltage" && sysOK && sys.PiPower != nil && sys.PiPower.UndervoltageNow {
 				msg += " Undervoltage is present right now."
 			}
@@ -711,4 +780,32 @@ func humanBytes(b uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// eventDetails lists up to three event messages of a kind since t.
+func eventDetails(ctx context.Context, st *store.Store, deviceID, kind string, since time.Time) string {
+	evs, err := st.Events(ctx, deviceID, since, 500)
+	if err != nil {
+		return ""
+	}
+	var msgs []string
+	more := 0
+	for _, e := range evs {
+		if e.Kind != kind {
+			continue
+		}
+		if len(msgs) == 3 {
+			more++
+			continue
+		}
+		msgs = append(msgs, e.Message)
+	}
+	out := ""
+	if len(msgs) > 0 {
+		out = " " + strings.Join(msgs, " · ")
+	}
+	if more > 0 {
+		out += fmt.Sprintf(" (+%d more)", more)
+	}
+	return out
 }
