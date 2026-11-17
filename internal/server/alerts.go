@@ -74,7 +74,7 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Pending for", "days", 7}}},
 	{ID: "os_eol", Group: "Updates", Title: "Operating system end of support", Description: "The OS version is out of support or will be within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Warn before", "days", 30}}},
-	{ID: "office_eol", Group: "Updates", Title: "Office end of support", Description: "An installed Office, Visio or Project release (2007-2024) is out of support or will be within the given time. Microsoft 365 Apps are not affected.",
+	{ID: "office_eol", Group: "Updates", Title: "Office end of support", Description: "An installed Office, Visio or Project release (perpetual license, e.g. 2016, 2021, LTSC 2024) is out of support or will be within the given time. Microsoft 365 Apps are not affected.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"days", "Warn before", "days", 30}}},
 
 	{ID: "defender_off", Group: "Security", Title: "Defender disabled", Description: "Microsoft Defender antivirus or real-time protection is off (passive mode is ignored).",

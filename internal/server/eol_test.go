@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,15 @@ import (
 	"testing"
 	"time"
 )
+
+// testEOLCycles is a small excerpt of endoflife.date data for tests.
+func testEOLCycles() map[string][]eolCycle {
+	c := func(cycle, eol string) eolCycle { return eolCycle{Cycle: cycle, EOL: json.RawMessage(`"` + eol + `"`)} }
+	return map[string][]eolCycle{
+		"windows": {c("11-24h2-w", "2026-10-13"), c("11-24h2-e", "2027-10-12"), c("10-22h2", "2025-10-14")},
+		"office":  {c("2024", "2029-10-09"), c("2024-ltsc", "2029-10-09"), c("2021", "2026-10-13"), c("2019", "2025-10-14"), c("2016", "2025-10-14")},
+	}
+}
 
 func TestEOLFetchWarning(t *testing.T) {
 	up := false
@@ -36,7 +46,7 @@ func TestEOLFetchWarning(t *testing.T) {
 	if e.refresh(ctx) {
 		t.Fatalf("refresh reported success")
 	}
-	if w := e.Warning(now); !strings.Contains(w, "HTTP 503") || !strings.Contains(w, "built-in") {
+	if w := e.Warning(now); !strings.Contains(w, "HTTP 503") || !strings.Contains(w, "not checked") {
 		t.Fatalf("unexpected warning: %q", w)
 	}
 	// Success clears the warning.

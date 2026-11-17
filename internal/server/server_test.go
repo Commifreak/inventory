@@ -74,6 +74,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server, *fakeMailer) {
 	}
 	fm := &fakeMailer{}
 	s.mailer = fm
+	s.eol.prods = testEOLCycles()
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(func() { ts.Close(); s.store.Close() })
 	return s, ts, fm
@@ -337,7 +338,7 @@ func get(t *testing.T, c *http.Client, url string) string {
 var officeItem = protocol.SoftwareItem{Name: "Microsoft Office Professional Plus 2016", Version: "16.0.4266.1001", Source: "registry", Scope: "machine", Arch: "x86"}
 
 func TestOfficeLookup(t *testing.T) {
-	e := &EOLData{prods: map[string][]eolCycle{}}
+	e := &EOLData{prods: testEOLCycles()}
 	sw := func(n string) protocol.SoftwareItem { return protocol.SoftwareItem{Name: n} }
 	got := e.OfficeLookup([]protocol.SoftwareItem{
 		sw("Microsoft Office LTSC Professional Plus 2021 - de-de"),
@@ -355,10 +356,13 @@ func TestOfficeLookup(t *testing.T) {
 	if len(got[1].Products) != 2 || got[1].EOL.Format("2006-01-02") != "2026-10-13" {
 		t.Errorf("office 2021: %+v", got[1])
 	}
-	// Fetched data takes precedence over the built-in table.
-	e.prods["office"] = []eolCycle{{Cycle: "2024", EOL: []byte(`"2030-01-01"`)}}
-	if got := e.OfficeLookup([]protocol.SoftwareItem{sw("Microsoft Office Standard 2024")}); len(got) != 1 || got[0].EOL.Year() != 2030 {
-		t.Errorf("fetched data not used: %+v", got)
+	// Releases without data are skipped; no data at all yields nothing.
+	if got := e.OfficeLookup([]protocol.SoftwareItem{sw("Microsoft Office Standard 2007")}); len(got) != 0 {
+		t.Errorf("release without data reported: %+v", got)
+	}
+	e = &EOLData{prods: map[string][]eolCycle{}}
+	if got := e.OfficeLookup([]protocol.SoftwareItem{sw("Microsoft Office Standard 2021")}); len(got) != 0 {
+		t.Errorf("reported without data: %+v", got)
 	}
 }
 

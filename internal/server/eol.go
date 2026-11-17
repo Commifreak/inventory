@@ -19,8 +19,8 @@ import (
 )
 
 // EOLData provides end-of-support dates from endoflife.date, refreshed daily
-// and cached in DATA_DIR/eol. A small built-in table covers Windows when the
-// service cannot be reached.
+// and cached in DATA_DIR/eol. Without data (endoflife.date never reached)
+// end of support is not checked and the UI shows a warning.
 type EOLData struct {
 	dir   string
 	fetch bool
@@ -56,29 +56,6 @@ type EOLInfo struct {
 }
 
 var eolProducts = []string{"windows", "debian", "ubuntu", "fedora", "rhel", "rocky-linux", "almalinux", "centos-stream", "opensuse", "linuxmint", "pop-os", "alpine", "macos", "office"}
-
-// Built-in fallback (Microsoft lifecycle dates) used when endoflife.date
-// cannot be reached or does not list a cycle. Windows client releases:
-// Home/Pro = w, Enterprise/Education = e. Office: end of (extended) support
-// of the perpetual releases; Microsoft 365 Apps have no end date.
-var eolFallback = map[string][]eolCycle{
-	"windows": {
-		{"10-22h2-w", json.RawMessage(`"2025-10-14"`)}, {"10-22h2-e", json.RawMessage(`"2025-10-14"`)},
-		{"11-21h2-w", json.RawMessage(`"2023-10-10"`)}, {"11-21h2-e", json.RawMessage(`"2024-10-08"`)},
-		{"11-22h2-w", json.RawMessage(`"2024-10-08"`)}, {"11-22h2-e", json.RawMessage(`"2025-10-14"`)},
-		{"11-23h2-w", json.RawMessage(`"2025-11-11"`)}, {"11-23h2-e", json.RawMessage(`"2026-11-10"`)},
-		{"11-24h2-w", json.RawMessage(`"2026-10-13"`)}, {"11-24h2-e", json.RawMessage(`"2027-10-12"`)},
-		{"11-25h2-w", json.RawMessage(`"2027-10-12"`)}, {"11-25h2-e", json.RawMessage(`"2028-10-10"`)},
-		{"11-26h1-w", json.RawMessage(`"2028-03-14"`)}, {"11-26h1-e", json.RawMessage(`"2029-03-13"`)},
-		{"11-26h2-w", json.RawMessage(`"2028-10-10"`)}, {"11-26h2-e", json.RawMessage(`"2029-10-09"`)},
-	},
-	"office": {
-		{"2007", json.RawMessage(`"2017-10-10"`)}, {"2010", json.RawMessage(`"2020-10-13"`)},
-		{"2013", json.RawMessage(`"2023-04-11"`)}, {"2016", json.RawMessage(`"2025-10-14"`)},
-		{"2019", json.RawMessage(`"2025-10-14"`)}, {"2021", json.RawMessage(`"2026-10-13"`)},
-		{"2024", json.RawMessage(`"2029-10-09"`)},
-	},
-}
 
 func newEOLData(dataDir string, fetch bool, log *slog.Logger) *EOLData {
 	e := &EOLData{dir: filepath.Join(dataDir, "eol"), fetch: fetch, api: "https://endoflife.date/api/", log: log, prods: map[string][]eolCycle{}}
@@ -169,7 +146,7 @@ func (e *EOLData) refresh(ctx context.Context) bool {
 	}
 	e.failures++
 	e.lastErr = firstErr
-	e.log.Warn("could not fetch end-of-life data from endoflife.date (using cached/built-in data)", "err", firstErr, "attempts", e.failures)
+	e.log.Warn("could not fetch end-of-life data from endoflife.date (using cached data)", "err", firstErr, "attempts", e.failures)
 	return false
 }
 
@@ -185,7 +162,7 @@ func (e *EOLData) Warning(now time.Time) string {
 		if e.failures < 2 {
 			return ""
 		}
-		return fmt.Sprintf("End-of-support data could not be fetched from endoflife.date since %s (%s). Only the built-in dates for Windows and Office are used; Linux and macOS are not checked. Allow outbound HTTPS to endoflife.date or set EOL_FETCH=false.",
+		return fmt.Sprintf("End-of-support data could not be fetched from endoflife.date since %s (%s). No end-of-support data is available, so operating systems and Office are not checked. Allow outbound HTTPS to endoflife.date or set EOL_FETCH=false.",
 			e.failSince.Format("2006-01-02 15:04"), e.lastErr)
 	}
 	if now.Sub(e.lastOK) < eolStaleAfter {
@@ -202,15 +179,13 @@ func (e *EOLData) cycles(product string) []eolCycle {
 	return c
 }
 
-// lookupCycle finds the first candidate cycle, preferring the fetched data
-// and falling back to the built-in table.
+// lookupCycle finds the first matching candidate cycle of a product.
 func (e *EOLData) lookupCycle(product string, candidates []string) (t time.Time, isEOL, ok bool) {
-	for _, cyc := range [][]eolCycle{e.cycles(product), eolFallback[product]} {
-		for _, cand := range candidates {
-			for _, c := range cyc {
-				if strings.EqualFold(c.Cycle, cand) {
-					return parseEOL(c.EOL)
-				}
+	cyc := e.cycles(product)
+	for _, cand := range candidates {
+		for _, c := range cyc {
+			if strings.EqualFold(c.Cycle, cand) {
+				return parseEOL(c.EOL)
 			}
 		}
 	}
@@ -256,7 +231,7 @@ type OfficeEOL struct {
 // officeName matches perpetual Office, Visio and Project releases by their
 // uninstall name, e.g. "Microsoft Office LTSC Professional Plus 2021 - de-de",
 // "Microsoft Office Home and Business 2019", "Microsoft Visio Standard 2016".
-var officeName = regexp.MustCompile(`(?i)^microsoft (office|visio|project)\b.*\b(2007|2010|2013|2016|2019|2021|2024)\b`)
+var officeName = regexp.MustCompile(`(?i)^microsoft (office|visio|project)\b.*\b(20[0-9]{2})\b`)
 
 // officeIgnore skips components that are not the product itself.
 var officeIgnore = regexp.MustCompile(`(?i)365|add-?in|proofing|language|mui|runtime|click-to-run|web components|shared|validation`)
@@ -278,7 +253,7 @@ func (e *EOLData) OfficeLookup(items []protocol.SoftwareItem) []OfficeEOL {
 			}
 			continue
 		}
-		t, isEOL, ok := e.lookupCycle("office", []string{year, year + "-ltsc", "ltsc-" + year})
+		t, isEOL, ok := e.lookupCycle("office", []string{year, year + "-ltsc"})
 		if !ok {
 			continue
 		}
