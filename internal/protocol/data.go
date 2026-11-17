@@ -53,6 +53,63 @@ type HardwareInfo struct {
 	CPUThreads   int    `json:"cpu_threads,omitempty"`
 	MemoryBytes  uint64 `json:"memory_bytes,omitempty"`
 	Virtual      bool   `json:"virtual,omitempty"`
+	// Memory slots and modules (SMBIOS; macOS: system_profiler).
+	MemorySlots    int            `json:"memory_slots,omitempty"`
+	MemoryMaxBytes uint64         `json:"memory_max_bytes,omitempty"`
+	MemoryModules  []MemoryModule `json:"memory_modules,omitempty"`
+	// Slots are the expansion slots as described by the firmware (SMBIOS
+	// type 9) - vendors are not always accurate.
+	Slots []SystemSlot `json:"slots,omitempty"`
+	// StorageControllers with their ports and attached devices.
+	StorageControllers []StorageController `json:"storage_controllers,omitempty"`
+}
+
+// MemoryModule is a memory slot and the module in it.
+type MemoryModule struct {
+	Locator       string `json:"locator"`
+	Bank          string `json:"bank,omitempty"`
+	Installed     bool   `json:"installed"`
+	SizeBytes     uint64 `json:"size_bytes,omitempty"`
+	Type          string `json:"type,omitempty"`        // DDR4, LPDDR5, ...
+	FormFactor    string `json:"form_factor,omitempty"` // DIMM, SODIMM, soldered, ...
+	Soldered      bool   `json:"soldered,omitempty"`    // not a real slot
+	SpeedMTs      int    `json:"speed_mts,omitempty"`
+	ConfiguredMTs int    `json:"configured_mts,omitempty"`
+	Manufacturer  string `json:"manufacturer,omitempty"`
+	PartNumber    string `json:"part_number,omitempty"`
+	Serial        string `json:"serial,omitempty"`
+}
+
+// SystemSlot is an expansion slot according to the firmware.
+type SystemSlot struct {
+	Designation string `json:"designation"`
+	Type        string `json:"type"`            // "PCIe Gen4 x16", "M.2 (M key)"
+	Kind        string `json:"kind,omitempty"`  // storage, wireless, expansion, other
+	Width       string `json:"width,omitempty"` // x4
+	Usage       string `json:"usage"`           // in use, available, unavailable, unknown
+}
+
+// StorageController is a disk controller.
+type StorageController struct {
+	Name   string `json:"name"`
+	Type   string `json:"type,omitempty"` // SATA (AHCI), NVMe, RAID, SAS, SCSI, IDE, SD/MMC
+	Vendor string `json:"vendor,omitempty"`
+	Driver string `json:"driver,omitempty"`
+	// Location is the bus address (PCI address or PnP device ID).
+	Location string        `json:"location,omitempty"`
+	Ports    []StoragePort `json:"ports,omitempty"`
+	// PortsComplete is set when Ports lists empty ports too; otherwise only
+	// occupied ports are known.
+	PortsComplete bool `json:"ports_complete,omitempty"`
+}
+
+// StoragePort is a port of a storage controller.
+type StoragePort struct {
+	Port     string `json:"port"`
+	Occupied bool   `json:"occupied"`
+	Speed    string `json:"speed,omitempty"`  // negotiated link speed, e.g. "6.0 Gbps"
+	Device   string `json:"device,omitempty"` // model of the attached device
+	Path     string `json:"path,omitempty"`   // /dev/sda, \\.\PHYSICALDRIVE0
 }
 
 type Volume struct {

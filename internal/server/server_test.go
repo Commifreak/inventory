@@ -102,11 +102,21 @@ func postJSON(t *testing.T, url, auth string, v any, out any) int {
 func sampleReport(now time.Time) protocol.Report {
 	return protocol.Report{AgentVersion: "0.0.9", Sections: map[string]protocol.Section{
 		protocol.CollectSystem: {CollectedAt: now, Data: protocol.SystemInfo{
-			OS:       protocol.OSInfo{Family: "windows", Name: "Windows 10 Pro", Version: "10.0.19045.5000", DisplayVersion: "22H2", Arch: "amd64", BootTime: now.Add(-time.Hour)},
-			Hardware: protocol.HardwareInfo{Manufacturer: "LENOVO", Model: "ThinkPad", CPU: "Intel i5", MemoryBytes: 16 << 30},
-			Volumes:  []protocol.Volume{{Mount: "C:", FS: "NTFS", SizeBytes: 500 << 30, FreeBytes: 10 << 30, System: true, Encrypted: ptr(false), Encryption: "BitLocker off"}},
-			Network:  []protocol.NetAdapter{{Name: "Ethernet", IPs: []string{"192.168.1.10/24", "fe80::1/64"}, Up: true, DHCP: ptr(true)}},
-			Users:    protocol.UsersInfo{CurrentUsers: []string{"PC\\anna"}, Admins: []string{"PC\\Administrator", "PC\\anna"}, LastLogons: []protocol.UserLogon{{User: "anna", Time: now}}},
+			OS: protocol.OSInfo{Family: "windows", Name: "Windows 10 Pro", Version: "10.0.19045.5000", DisplayVersion: "22H2", Arch: "amd64", BootTime: now.Add(-time.Hour)},
+			Hardware: protocol.HardwareInfo{Manufacturer: "LENOVO", Model: "ThinkPad", CPU: "Intel i5", MemoryBytes: 16 << 30,
+				MemorySlots: 2, MemoryMaxBytes: 64 << 30, MemoryModules: []protocol.MemoryModule{
+					{Locator: "DIMM A", Installed: true, SizeBytes: 16 << 30, Type: "DDR4", FormFactor: "SODIMM", SpeedMTs: 3200, ConfiguredMTs: 2933, Manufacturer: "Samsung", PartNumber: "M471A2K43DB1-CWE"},
+					{Locator: "DIMM B"}},
+				Slots: []protocol.SystemSlot{{Designation: "M.2_2", Type: "M.2 (M key)", Kind: "storage", Width: "x4", Usage: "available"},
+					{Designation: "PCIEX16_1", Type: "PCIe Gen4 x16", Kind: "expansion", Width: "x16", Usage: "in use"}},
+				StorageControllers: []protocol.StorageController{
+					{Name: "Standard SATA AHCI Controller", Type: "SATA (AHCI)", Driver: "storahci", Location: `PCI\VEN_8086&DEV_A352`,
+						Ports: []protocol.StoragePort{{Port: "bus 0 · target 0", Occupied: true, Device: "Samsung SSD 870", Path: `\\.\PHYSICALDRIVE0`}}},
+					{Name: "Intel SATA (AHCI) controller [8086:a352]", Type: "SATA (AHCI)", PortsComplete: true,
+						Ports: []protocol.StoragePort{{Port: "1", Occupied: true, Speed: "6.0 Gbps", Device: "Samsung SSD 870", Path: "/dev/sda"}, {Port: "2"}}}}},
+			Volumes: []protocol.Volume{{Mount: "C:", FS: "NTFS", SizeBytes: 500 << 30, FreeBytes: 10 << 30, System: true, Encrypted: ptr(false), Encryption: "BitLocker off"}},
+			Network: []protocol.NetAdapter{{Name: "Ethernet", IPs: []string{"192.168.1.10/24", "fe80::1/64"}, Up: true, DHCP: ptr(true)}},
+			Users:   protocol.UsersInfo{CurrentUsers: []string{"PC\\anna"}, Admins: []string{"PC\\Administrator", "PC\\anna"}, LastLogons: []protocol.UserLogon{{User: "anna", Time: now}}},
 			Security: protocol.SecurityInfo{
 				SecureBoot: &protocol.SecureBootInfo{Supported: true, Enabled: true, DBHasWindowsUEFICA2023: ptr(false), ServicingStatus: "NotStarted",
 					DBHasMicrosoftUEFICA2023: ptr(false), DBHasMicrosoftUEFICA2011: ptr(false)},
@@ -301,6 +311,13 @@ func TestEndToEnd(t *testing.T) {
 	s.eol.mu.Lock()
 	s.eol.fetch, s.eol.failures = false, 0
 	s.eol.mu.Unlock()
+	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=overview"); !strings.Contains(p, "1 of 2 slots used") || !strings.Contains(p, "M471A2K43DB1-CWE") || !strings.Contains(p, "PCIe Gen4 x16") {
+		t.Errorf("memory modules/slots missing on the overview")
+	}
+	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=disks"); !strings.Contains(p, "Storage controllers") || !strings.Contains(p, "Only occupied ports are known") ||
+		!strings.Contains(p, "6.0 Gbps") || !strings.Contains(p, "M.2_2") || strings.Contains(p, "PCIEX16_1") {
+		t.Errorf("storage controllers/slots wrong on the disks tab")
+	}
 	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=software"); !strings.Contains(p, "Office support") || !strings.Contains(p, "ended 2025-10-14") {
 		t.Errorf("office support status missing on the software tab")
 	}

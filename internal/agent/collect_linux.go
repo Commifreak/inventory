@@ -140,6 +140,10 @@ func collectSystemLinux(ctx context.Context, _ *State) (any, []string, error) {
 		v := strings.TrimSpace(out)
 		hw.Virtual = v != "" && v != "none"
 	}
+	if table, err := os.ReadFile("/sys/firmware/dmi/tables/DMI"); err == nil {
+		applySMBIOS(&hw, table) // memory slots/modules, expansion slots
+	}
+	hw.StorageControllers = linuxStorageControllers("/sys")
 	info.Hardware = hw
 
 	blk := lsblk(ctx)

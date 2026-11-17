@@ -62,7 +62,7 @@
       <dt>Model</dt><dd>{{.Hardware.Manufacturer}} {{.Hardware.Model}}{{if .Hardware.Virtual}} <span class="badge st-info">virtual</span>{{end}}</dd>
       {{if .Hardware.SerialNumber}}<dt>Serial</dt><dd class="mono">{{.Hardware.SerialNumber}}</dd>{{end}}
       <dt>CPU</dt><dd>{{.Hardware.CPU}}{{if .Hardware.CPUCores}} <span class="muted">({{.Hardware.CPUCores}} cores / {{.Hardware.CPUThreads}} threads)</span>{{end}}</dd>
-      <dt>Memory</dt><dd>{{bytes .Hardware.MemoryBytes}}</dd>
+      <dt>Memory</dt><dd>{{bytes .Hardware.MemoryBytes}}{{with .Hardware.MemoryModules}} <span class="muted">({{installedModules .}} of {{$.Data.Sys.Hardware.MemorySlots}} slots used{{if $.Data.Sys.Hardware.MemoryMaxBytes}}, max {{bytes $.Data.Sys.Hardware.MemoryMaxBytes}}{{end}})</span>{{end}}</dd>
       {{if .Hardware.Board}}<dt>Board</dt><dd>{{.Hardware.Board}}</dd>{{end}}
       {{if .Hardware.BIOSVersion}}<dt>BIOS/UEFI</dt><dd>{{.Hardware.BIOSVendor}} {{.Hardware.BIOSVersion}} {{.Hardware.BIOSDate}}</dd>{{end}}
       {{if .Hardware.UUID}}<dt>UUID</dt><dd class="mono small">{{.Hardware.UUID}}</dd>{{end}}
@@ -123,6 +123,17 @@
     </tbody>
   </table></div>
 </section>
+{{with .Hardware.MemoryModules}}
+<section class="card">
+  <h2>Memory modules</h2>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Slot</th><th>Size</th><th>Type</th><th>Speed</th><th>Manufacturer</th><th>Part number</th></tr></thead><tbody>
+  {{range .}}<tr><td>{{.Locator}}{{if .Bank}} <span class="sub">{{.Bank}}</span>{{end}}{{if .Soldered}} <span class="badge">soldered</span>{{end}}</td>
+    {{if .Installed}}<td>{{if .SizeBytes}}{{bytes .SizeBytes}}{{else}}?{{end}}</td><td>{{.Type}}{{if .FormFactor}} <span class="sub">{{.FormFactor}}</span>{{end}}</td>
+    <td>{{if .SpeedMTs}}{{.SpeedMTs}} MT/s{{if and .ConfiguredMTs (ne .ConfiguredMTs .SpeedMTs)}} <span class="sub">(runs at {{.ConfiguredMTs}})</span>{{end}}{{end}}</td><td>{{.Manufacturer}}</td><td class="mono small">{{.PartNumber}}</td>
+    {{else}}<td colspan="5"><span class="badge">empty</span></td>{{end}}</tr>{{end}}
+  </tbody></table></div>
+</section>
+{{end}}
 
 <div class="grid">
 <section class="card">
@@ -150,6 +161,15 @@
     {{end}}
   </tbody></table>
   <p class="hint">Source: {{.Source}}{{if .Raw}} (throttled={{.Raw}}){{end}}. Undervoltage events are also recorded in the Events tab.</p>
+</section>
+{{end}}
+{{with .Hardware.Slots}}
+<section class="card">
+  <h2>Expansion slots <span class="sub">(according to firmware)</span></h2>
+  <table class="compact"><thead><tr><th>Slot</th><th>Type</th><th>Width</th><th>Usage</th></tr></thead><tbody>
+  {{range .}}<tr><td>{{.Designation}}</td><td>{{.Type}}</td><td>{{.Width}}</td><td>{{template "slotusage" .Usage}}</td></tr>{{end}}
+  </tbody></table>
+  <p class="hint">As described by the BIOS/UEFI – vendors are not always accurate.</p>
 </section>
 {{end}}
 {{if .Battery}}
@@ -206,7 +226,35 @@
 {{else}}
 <div class="card empty"><p>No disk data{{if index $d.Snaps "smart"}} – no disks with SMART support were found{{end}}.</p></div>
 {{end}}
+{{with $d.Sys}}{{with .Hardware.StorageControllers}}
+<section class="card">
+  <h2>Storage controllers</h2>
+  {{range .}}
+  <div class="controller">
+    <h3>{{.Name}} {{if .Type}}<span class="badge">{{.Type}}</span>{{end}}</h3>
+    <p class="sub">{{if .Vendor}}{{.Vendor}} · {{end}}{{if .Driver}}driver {{.Driver}} · {{end}}<span class="mono">{{.Location}}</span></p>
+    {{if .Ports}}
+    <table class="compact"><thead><tr><th>Port</th><th>Status</th><th>Device</th><th>Path</th><th>Link</th></tr></thead><tbody>
+    {{range .Ports}}<tr><td>{{.Port}}</td><td>{{if .Occupied}}<span class="badge st-ok">occupied</span>{{else}}<span class="badge">empty</span>{{end}}</td><td>{{.Device}}</td><td class="mono small">{{.Path}}</td><td class="small">{{.Speed}}</td></tr>{{end}}
+    </tbody></table>
+    {{else}}<p class="muted small">No attached devices found.</p>{{end}}
+    {{if not .PortsComplete}}<p class="hint">Only occupied ports are known for this controller; empty ports cannot be detected.</p>{{end}}
+  </div>
+  {{end}}
+</section>
 {{end}}
+{{with storageSlots .Hardware.Slots}}
+<section class="card">
+  <h2>Storage slots <span class="sub">(according to firmware)</span></h2>
+  <p class="hint">M.2/U.2 slots as described by the BIOS/UEFI. This is the only source for empty M.2 slots, but vendors are not always accurate.</p>
+  <table class="compact"><thead><tr><th>Slot</th><th>Type</th><th>Width</th><th>Usage</th></tr></thead><tbody>
+  {{range .}}<tr><td>{{.Designation}}</td><td>{{.Type}}</td><td>{{.Width}}</td><td>{{template "slotusage" .Usage}}</td></tr>{{end}}
+  </tbody></table>
+</section>
+{{end}}{{end}}
+{{end}}
+
+{{define "slotusage"}}{{if eq . "in use"}}<span class="badge st-ok">in use</span>{{else if eq . "available"}}<span class="badge">available</span>{{else}}<span class="muted">{{.}}</span>{{end}}{{end}}
 
 {{/* ================================================================== */}}
 {{define "tab_updates"}}{{$d := .Data}}

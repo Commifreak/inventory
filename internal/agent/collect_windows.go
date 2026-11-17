@@ -254,6 +254,14 @@ func collectSystemWindows(ctx context.Context, _ *State) (any, []string, error) 
 		hw.CPUCores += int(c.NumberOfCores)
 		hw.CPUThreads += int(c.NumberOfLogicalProcessors)
 	}
+	if table, err := windowsSMBIOS(); err == nil {
+		applySMBIOS(&hw, table) // memory slots/modules, expansion slots
+	} else {
+		warn("smbios", err)
+	}
+	ctrls, err := windowsStorageControllers()
+	warn("storage controllers", err)
+	hw.StorageControllers = ctrls
 	info.Hardware = hw
 
 	// Volumes and BitLocker

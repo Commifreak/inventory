@@ -54,6 +54,11 @@ jobs:
           foreach ($s in $r.sections.PSObject.Properties) {
             "{0,-10} {1,6} ms  error: {2}  warnings: {3}" -f $s.Name, $s.Value.duration_ms, $s.Value.error, ($s.Value.warnings -join '; ')
           }
+          $hw = $r.sections.system.data.hardware
+          "memory: $($hw.memory_slots) slots, max $($hw.memory_max_bytes) bytes"
+          $hw.memory_modules | Format-Table locator, installed, size_bytes, type, form_factor, speed_mts | Out-String
+          $hw.slots | Format-Table designation, type, width, usage | Out-String
+          $hw.storage_controllers | ConvertTo-Json -Depth 5
           if ($p.ExitCode -ne 0) { exit 1 }
       - name: proxy
         shell: pwsh

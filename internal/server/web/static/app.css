@@ -167,3 +167,7 @@ label.inline > input, label.inline > select { display: inline-block; width: auto
 table.rules td { vertical-align: middle; }
 pre.raw { background: var(--surface-2); border-radius: 6px; padding: .75rem; overflow: auto; max-height: 70vh; font-size: .8rem; margin: .5rem 0 0; white-space: pre; }
 h1 .rename { font-size: .85rem; font-weight: 400; }
+
+.controller { padding: .6rem 0; border-top: 1px solid var(--border); }
+.controller:first-of-type { border-top: 0; padding-top: 0; }
+.controller h3 { margin: 0 0 .2rem; font-size: 1rem; }

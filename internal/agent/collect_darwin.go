@@ -103,6 +103,10 @@ func collectSystemDarwin(ctx context.Context, _ *State) (any, []string, error) {
 		}
 	}
 
+	if err := darwinStorageAndMemory(ctx, &info.Hardware); err != nil {
+		warns = append(warns, "storage/memory: "+err.Error())
+	}
+
 	// Volumes
 	fv := ""
 	if out, err := runCmd(ctx, "fdesetup", "status"); err == nil {

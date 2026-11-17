@@ -27,3 +27,6 @@
 - Microsoft Store (Appx) app inventory
 - winget based "outdated software" report
 - Per-device alert rule overrides beyond the offline threshold
+- Remote support: not built into the agent (read-only principle, attack surface);
+  possible later: show the RustDesk/MeshCentral ID of a client with a connect link
+- RAID controller details via vendor tools (storcli etc.)

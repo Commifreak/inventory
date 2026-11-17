@@ -72,6 +72,24 @@ func newWebUI(s *Server) (*webUI, error) {
 			}
 			return "st-warning"
 		},
+		"installedModules": func(ms []protocol.MemoryModule) int {
+			n := 0
+			for _, m := range ms {
+				if m.Installed {
+					n++
+				}
+			}
+			return n
+		},
+		"storageSlots": func(sl []protocol.SystemSlot) []protocol.SystemSlot {
+			var out []protocol.SystemSlot
+			for _, x := range sl {
+				if x.Kind == "storage" {
+					out = append(out, x)
+				}
+			}
+			return out
+		},
 		"add": func(a, b int) int { return a + b },
 		"div": func(a, b int) int {
 			if b == 0 {

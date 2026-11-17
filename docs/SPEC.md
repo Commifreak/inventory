@@ -85,6 +85,14 @@ software 12 h, autostart 12 h, events 4 h.
 - **SMART:** smartctl (embedded on Windows, system package on Linux, Homebrew on
   macOS), fallback to the Windows storage API; system disk flagged; external
   (USB) disks shown but excluded from alerts.
+- **Memory, slots, storage controllers:** memory slots and modules (SMBIOS type
+  16/17 – Windows `GetSystemFirmwareTable`, Linux `/sys/firmware/dmi/tables/DMI`;
+  macOS `system_profiler`), expansion slots per firmware (SMBIOS type 9, incl.
+  M.2 – the only source for empty M.2 slots, vendor quality varies), storage
+  controllers with ports: Linux exact incl. empty SATA ports (libata link state),
+  NVMe and SD/MMC hosts; Windows controllers by PCI class code with attached
+  disks/optical drives (device tree parent), empty ports unknown; macOS occupied
+  ports only. RAID controllers behind vendor tools are not inspected.
 - **Updates:** Windows Update Agent (pending incl. drivers, history with HRESULT,
   last search/install, reboot pending, WSUS, services); apt/dnf/zypper/pacman
   (pending, security, last refresh/install, unattended upgrades, reboot required,
