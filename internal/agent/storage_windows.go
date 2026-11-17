@@ -53,13 +53,14 @@ type win32PnPController struct {
 }
 
 type win32StorageDevice struct {
-	Model        string
-	Name         string
-	PNPDeviceID  string
-	DeviceID     string
-	Drive        string
-	SCSIBus      uint32
-	SCSITargetId uint16
+	Model           string
+	Name            string
+	PNPDeviceID     string
+	DeviceID        string
+	Drive           string
+	SCSIBus         uint32
+	SCSITargetId    uint16
+	SCSILogicalUnit uint16
 }
 
 // windowsStorageControllers lists hardware storage controllers (PnP classes
@@ -73,8 +74,8 @@ func windowsStorageControllers() ([]protocol.StorageController, error) {
 		return nil, err
 	}
 	var disks, cds []win32StorageDevice
-	_ = wmi.Query("SELECT Model, PNPDeviceID, DeviceID, SCSIBus, SCSITargetId FROM Win32_DiskDrive", &disks)
-	_ = wmi.Query("SELECT Name, PNPDeviceID, Drive, SCSIBus, SCSITargetId FROM Win32_CDROMDrive", &cds)
+	_ = wmi.Query("SELECT Model, PNPDeviceID, DeviceID, SCSIBus, SCSITargetId, SCSILogicalUnit FROM Win32_DiskDrive", &disks)
+	_ = wmi.Query("SELECT Name, PNPDeviceID, Drive, SCSIBus, SCSITargetId, SCSILogicalUnit FROM Win32_CDROMDrive", &cds)
 
 	var out []protocol.StorageController
 	index := map[string]int{}
@@ -99,7 +100,11 @@ func windowsStorageControllers() ([]protocol.StorageController, error) {
 				return
 			}
 			if i, ok := index[strings.ToUpper(parent)]; ok {
-				out[i].Ports = append(out[i].Ports, protocol.StoragePort{Port: fmt.Sprintf("bus %d · target %d", d.SCSIBus, d.SCSITargetId),
+				port := fmt.Sprintf("bus %d · target %d", d.SCSIBus, d.SCSITargetId)
+				if d.SCSILogicalUnit != 0 {
+					port += fmt.Sprintf(" · LUN %d", d.SCSILogicalUnit)
+				}
+				out[i].Ports = append(out[i].Ports, protocol.StoragePort{Port: port,
 					Occupied: true, Device: strings.TrimSpace(model), Path: path})
 				return
 			}
