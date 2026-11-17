@@ -146,6 +146,8 @@ type page struct {
 	OIDC     bool
 	OIDCName string
 	Local    bool
+	// Warnings are server problems shown to signed-in users on every page.
+	Warnings []string
 	Data     any
 }
 
@@ -163,6 +165,11 @@ func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p p
 	}
 	p.Version = w.s.cfg.Version
 	p.Instance = w.s.generalSettings(r.Context()).InstanceName
+	if p.User != nil {
+		if msg := w.s.eol.Warning(time.Now()); msg != "" {
+			p.Warnings = append(p.Warnings, msg)
+		}
+	}
 	p.OIDC = w.s.cfg.OIDC.Enabled()
 	p.OIDCName = w.s.cfg.OIDC.ButtonLabel
 	p.Local = w.s.cfg.LocalLogin

@@ -287,6 +287,16 @@ func TestEndToEnd(t *testing.T) {
 	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=overview"); !strings.Contains(p, "not applicable") {
 		t.Errorf("third-party CA shown as missing although not applicable")
 	}
+	// Server warning when endoflife.date is unreachable.
+	s.eol.mu.Lock()
+	s.eol.fetch, s.eol.failures, s.eol.lastErr = true, 2, "connection refused"
+	s.eol.mu.Unlock()
+	if p := get(t, c, ts.URL+"/"); !strings.Contains(p, "flash warn") || !strings.Contains(p, "connection refused") {
+		t.Errorf("endoflife.date warning not shown")
+	}
+	s.eol.mu.Lock()
+	s.eol.fetch, s.eol.failures = false, 0
+	s.eol.mu.Unlock()
 	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=software"); !strings.Contains(p, "Office support") || !strings.Contains(p, "ended 2025-10-14") {
 		t.Errorf("office support status missing on the software tab")
 	}

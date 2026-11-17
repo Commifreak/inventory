@@ -24,11 +24,24 @@ import (
 type EOLData struct {
 	dir   string
 	fetch bool
+	api   string
 	log   *slog.Logger
 	mu    sync.RWMutex
 	prods map[string][]eolCycle
-	last  time.Time
+	// lastOK is the last successful fetch (initialised from the cache files),
+	// failures counts consecutive failed fetches, lastErr describes the last one.
+	lastOK    time.Time
+	failSince time.Time
+	failures  int
+	lastErr   string
 }
+
+const (
+	eolRefreshInterval = 24 * time.Hour
+	eolRetryInterval   = time.Hour
+	// eolStaleAfter is how long fetching may fail before the UI warns.
+	eolStaleAfter = 3 * 24 * time.Hour
+)
 
 type eolCycle struct {
 	Cycle string          `json:"cycle"`
@@ -56,6 +69,8 @@ var eolFallback = map[string][]eolCycle{
 		{"11-23h2-w", json.RawMessage(`"2025-11-11"`)}, {"11-23h2-e", json.RawMessage(`"2026-11-10"`)},
 		{"11-24h2-w", json.RawMessage(`"2026-10-13"`)}, {"11-24h2-e", json.RawMessage(`"2027-10-12"`)},
 		{"11-25h2-w", json.RawMessage(`"2027-10-12"`)}, {"11-25h2-e", json.RawMessage(`"2028-10-10"`)},
+		{"11-26h1-w", json.RawMessage(`"2028-03-14"`)}, {"11-26h1-e", json.RawMessage(`"2029-03-13"`)},
+		{"11-26h2-w", json.RawMessage(`"2028-10-10"`)}, {"11-26h2-e", json.RawMessage(`"2029-10-09"`)},
 	},
 	"office": {
 		{"2007", json.RawMessage(`"2017-10-10"`)}, {"2010", json.RawMessage(`"2020-10-13"`)},
@@ -66,13 +81,17 @@ var eolFallback = map[string][]eolCycle{
 }
 
 func newEOLData(dataDir string, fetch bool, log *slog.Logger) *EOLData {
-	e := &EOLData{dir: filepath.Join(dataDir, "eol"), fetch: fetch, log: log, prods: map[string][]eolCycle{}}
+	e := &EOLData{dir: filepath.Join(dataDir, "eol"), fetch: fetch, api: "https://endoflife.date/api/", log: log, prods: map[string][]eolCycle{}}
 	_ = os.MkdirAll(e.dir, 0o755)
 	for _, p := range eolProducts {
-		if b, err := os.ReadFile(filepath.Join(e.dir, p+".json")); err == nil {
+		f := filepath.Join(e.dir, p+".json")
+		if b, err := os.ReadFile(f); err == nil {
 			var c []eolCycle
 			if json.Unmarshal(b, &c) == nil {
 				e.prods[p] = c
+				if fi, err := os.Stat(f); err == nil && fi.ModTime().After(e.lastOK) {
+					e.lastOK = fi.ModTime()
+				}
 			}
 		}
 	}
@@ -84,36 +103,53 @@ func (e *EOLData) loop(ctx context.Context) {
 		return
 	}
 	for {
-		e.refresh(ctx)
+		wait := eolRefreshInterval
+		if !e.refresh(ctx) {
+			wait = eolRetryInterval
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(24 * time.Hour):
+		case <-time.After(wait):
 		}
 	}
 }
 
-func (e *EOLData) refresh(ctx context.Context) {
+// refresh fetches all products; it reports whether endoflife.date answered.
+func (e *EOLData) refresh(ctx context.Context) bool {
 	client := &http.Client{Timeout: 30 * time.Second}
 	ok := 0
+	var firstErr string
+	fail := func(msg string) {
+		if firstErr == "" {
+			firstErr = msg
+		}
+	}
 	for _, p := range eolProducts {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://endoflife.date/api/"+p+".json", nil)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, e.api+p+".json", nil)
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "inventory-server")
 		resp, err := client.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return
+				return true // shutting down, not a failure
 			}
+			fail(err.Error())
 			continue
 		}
 		b, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		resp.Body.Close()
-		if err != nil || resp.StatusCode != http.StatusOK {
+		if err != nil {
+			fail(err.Error())
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			fail(fmt.Sprintf("%s: HTTP %d", p, resp.StatusCode))
 			continue
 		}
 		var c []eolCycle
 		if json.Unmarshal(b, &c) != nil || len(c) == 0 {
+			fail(p + ": unexpected response")
 			continue
 		}
 		_ = os.WriteFile(filepath.Join(e.dir, p+".json"), b, 0o644)
@@ -123,11 +159,40 @@ func (e *EOLData) refresh(ctx context.Context) {
 		ok++
 	}
 	e.mu.Lock()
-	e.last = time.Now()
-	e.mu.Unlock()
-	if ok == 0 {
-		e.log.Warn("could not fetch end-of-life data from endoflife.date (using cached/built-in data)")
+	defer e.mu.Unlock()
+	if ok > 0 {
+		e.lastOK, e.failures, e.lastErr, e.failSince = time.Now(), 0, "", time.Time{}
+		return true
 	}
+	if e.failures == 0 {
+		e.failSince = time.Now()
+	}
+	e.failures++
+	e.lastErr = firstErr
+	e.log.Warn("could not fetch end-of-life data from endoflife.date (using cached/built-in data)", "err", firstErr, "attempts", e.failures)
+	return false
+}
+
+// Warning returns a message for the UI when end-of-support data could not be
+// fetched for a longer time, or never since the installation.
+func (e *EOLData) Warning(now time.Time) string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if !e.fetch || e.failures == 0 {
+		return ""
+	}
+	if e.lastOK.IsZero() {
+		if e.failures < 2 {
+			return ""
+		}
+		return fmt.Sprintf("End-of-support data could not be fetched from endoflife.date since %s (%s). Only the built-in dates for Windows and Office are used; Linux and macOS are not checked. Allow outbound HTTPS to endoflife.date or set EOL_FETCH=false.",
+			e.failSince.Format("2006-01-02 15:04"), e.lastErr)
+	}
+	if now.Sub(e.lastOK) < eolStaleAfter {
+		return ""
+	}
+	return fmt.Sprintf("End-of-support data could not be fetched from endoflife.date since %s (%s). Data cached on %s is used and may be outdated.",
+		e.failSince.Format("2006-01-02 15:04"), e.lastErr, e.lastOK.Format("2006-01-02"))
 }
 
 func (e *EOLData) cycles(product string) []eolCycle {

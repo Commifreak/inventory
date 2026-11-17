@@ -25,6 +25,7 @@
 </header>
 {{end}}
 <main class="{{if not .User}}narrow{{end}}">
+  {{range .Warnings}}<div class="flash warn">{{.}}</div>{{end}}
   {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}
   {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
   {{template "content" .}}
