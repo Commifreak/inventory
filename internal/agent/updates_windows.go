@@ -203,6 +203,7 @@ func propTime(d *ole.IDispatch, name string) time.Time {
 }
 
 // forEach iterates an IUpdateCollection-like object (Count / Item(i)).
+// The item is released after fn returns; fn must not release it.
 func forEach(coll *ole.IDispatch, fn func(item *ole.IDispatch)) {
 	n := propInt(coll, "Count")
 	for i := int64(0); i < n; i++ {
@@ -284,7 +285,6 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 					p.Security = true
 				}
 				u.Pending = append(u.Pending, p)
-				up.Release()
 			})
 			updates.Clear()
 		}
@@ -308,7 +308,6 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 			results := map[int64]string{0: "NotStarted", 1: "InProgress", 2: "Succeeded", 3: "SucceededWithErrors", 4: "Failed", 5: "Aborted"}
 			seenIntel := false
 			forEach(hv.ToIDispatch(), func(e *ole.IDispatch) {
-				defer e.Release()
 				title := propString(e, "Title")
 				if title == "" {
 					return

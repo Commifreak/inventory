@@ -278,7 +278,6 @@ func scheduledTasksCOM() ([]protocol.AutostartItem, error) {
 		vendor := strings.HasPrefix(folderPath, `\Microsoft`)
 		if tv, err := oleutil.CallMethod(f, "GetTasks", 1); err == nil { // include hidden
 			forEach(tv.ToIDispatch(), func(t *ole.IDispatch) {
-				defer t.Release()
 				defv, err := getProp(t, "Definition")
 				if err != nil {
 					return
@@ -296,7 +295,6 @@ func scheduledTasksCOM() ([]protocol.AutostartItem, error) {
 								trig = "at logon"
 							}
 						}
-						tr.Release()
 					})
 					trv.Clear()
 				}
@@ -309,7 +307,6 @@ func scheduledTasksCOM() ([]protocol.AutostartItem, error) {
 						if propInt(a, "Type") == 0 {
 							cmds = append(cmds, strings.TrimSpace(propString(a, "Path")+" "+propString(a, "Arguments")))
 						}
-						a.Release()
 					})
 					av.Clear()
 				}
@@ -321,7 +318,6 @@ func scheduledTasksCOM() ([]protocol.AutostartItem, error) {
 		if fv, err := oleutil.CallMethod(f, "GetFolders", 0); err == nil {
 			forEach(fv.ToIDispatch(), func(sub *ole.IDispatch) {
 				walk(sub, depth+1)
-				sub.Release()
 			})
 			fv.Clear()
 		}
