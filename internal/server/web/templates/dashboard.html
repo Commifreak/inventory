@@ -47,7 +47,7 @@
     <td class="cb"><input type="checkbox" name="ids" value="{{.D.ID}}" aria-label="Select {{.D.Name}}"></td>
     <td><a class="strong" href="/devices/{{.D.ID}}">{{.D.Name}}</a>
       <div class="sub">{{if ne .D.Name .D.Hostname}}{{.D.Hostname}} · {{end}}{{if .OSName}}{{.OSName}}{{else}}{{.D.OS}}{{end}} · {{.D.Arch}}</div></td>
-    <td>{{template "status" .Overall}}{{if .Alerts}} <a href="/devices/{{.D.ID}}?tab=alerts" class="sub">{{.Alerts}} alert{{if gt .Alerts 1}}s{{end}}</a>{{end}}{{if .D.AlertsMuted}} <span class="sub" title="Notifications muted">🔕</span>{{end}}</td>
+    <td class="nowrap">{{template "status" .Overall}}{{if .Alerts}} <a href="/devices/{{.D.ID}}?tab=alerts" class="sub">{{.Alerts}} alert{{if gt .Alerts 1}}s{{end}}</a>{{end}}{{if .D.AlertsMuted}} <span class="sub" title="Notifications muted">🔕</span>{{end}}</td>
     <td>{{if .SysDisk}}{{template "status" .SysDiskStatus}}
       <div class="sub">{{.SysDisk.Model}}{{if .SysDisk.Temperature}} · {{deref .SysDisk.Temperature}} °C{{end}}{{if .SysDisk.PercentUsed}} · {{deref .SysDisk.PercentUsed}}% used{{end}}</div>
       {{else}}<span class="muted">–</span>{{end}}</td>
