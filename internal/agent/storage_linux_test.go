@@ -8,6 +8,9 @@ import (
 
 func TestLinuxStorageControllers(t *testing.T) {
 	sys := t.TempDir()
+	oldIDs := pciIDsFiles
+	pciIDsFiles = nil // independent of the host's pci.ids
+	defer func() { pciIDsFiles = oldIDs }()
 	w := func(rel, content string) {
 		p := filepath.Join(sys, rel)
 		_ = os.MkdirAll(filepath.Dir(p), 0o755)

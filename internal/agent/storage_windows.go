@@ -45,6 +45,7 @@ func windowsSMBIOS() ([]byte, error) {
 
 type win32PnPController struct {
 	Name         string
+	PNPClass     string
 	Manufacturer string
 	DeviceID     string
 	Service      string
@@ -61,14 +62,14 @@ type win32StorageDevice struct {
 	SCSITargetId uint16
 }
 
-// windowsStorageControllers lists PCI storage controllers (PnP classes HDC
-// and SCSIAdapter) with the disks and optical drives attached to them. The
+// windowsStorageControllers lists hardware storage controllers (PnP classes
+// HDC and SCSIAdapter, PCI and VMBus) with the disks and optical drives attached to them. The
 // controller type comes from the PCI class code (language independent).
 // Empty ports cannot be determined, except that an NVMe controller always
 // holds exactly one SSD.
 func windowsStorageControllers() ([]protocol.StorageController, error) {
 	var ctrls []win32PnPController
-	if err := wmi.Query("SELECT Name, Manufacturer, DeviceID, Service, CompatibleID FROM Win32_PnPEntity WHERE PNPClass='HDC' OR PNPClass='SCSIAdapter'", &ctrls); err != nil {
+	if err := wmi.Query("SELECT Name, PNPClass, Manufacturer, DeviceID, Service, CompatibleID FROM Win32_PnPEntity WHERE PNPClass='HDC' OR PNPClass='SCSIAdapter'", &ctrls); err != nil {
 		return nil, err
 	}
 	var disks, cds []win32StorageDevice
@@ -78,11 +79,15 @@ func windowsStorageControllers() ([]protocol.StorageController, error) {
 	var out []protocol.StorageController
 	index := map[string]int{}
 	for _, c := range ctrls {
-		if !strings.HasPrefix(strings.ToUpper(c.DeviceID), `PCI\`) {
-			continue // Storage Spaces, iSCSI initiator and other virtual adapters
+		id := strings.ToUpper(c.DeviceID)
+		if strings.HasPrefix(id, `ROOT\`) || strings.HasPrefix(id, `SWD\`) {
+			continue // software adapters: Storage Spaces, iSCSI initiator, ...
 		}
 		sc := protocol.StorageController{Name: strings.TrimSpace(c.Name), Vendor: strings.TrimSpace(c.Manufacturer), Driver: c.Service,
 			Location: c.DeviceID, Type: windowsStorageType(c.CompatibleID)}
+		if sc.Type == "storage" { // no PCI class code, e.g. Hyper-V (VMBus)
+			sc.Type = map[string]string{"SCSIADAPTER": "SCSI", "HDC": "IDE/ATA"}[strings.ToUpper(c.PNPClass)]
+		}
 		index[strings.ToUpper(c.DeviceID)] = len(out)
 		out = append(out, sc)
 	}
