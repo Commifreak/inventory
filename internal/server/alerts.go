@@ -56,7 +56,7 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "errors", 0}}},
 	{ID: "smart_temperature", Group: "Disks", Title: "Disk temperature", Description: "Drive temperature at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"celsius", "Threshold", "°C", 65}}},
-	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "NVMe 'percentage used' at or above the threshold.",
+	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "NVMe 'percentage used' or eMMC life time estimate at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"percent", "Threshold", "%", 90}}},
 	{ID: "nvme_critical", Group: "Disks", Title: "NVMe critical warning", Description: "NVMe critical warning flags set or available spare below threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true},
@@ -89,7 +89,7 @@ var RuleCatalog = []RuleDef{
 
 	{ID: "bluescreen", Group: "Events", Title: "Bluescreen", Description: "The system crashed (bug check) within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
-	{ID: "disk_errors", Group: "Events", Title: "Disk errors in system log", Description: "I/O or file system errors logged within the given time.",
+	{ID: "disk_errors", Group: "Events", Title: "Disk errors in system log", Description: "I/O, SD card/eMMC or file system errors logged within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}, {"min", "At least", "events", 1}}},
 	{ID: "oom", Group: "Events", Title: "Out of memory", Description: "The kernel killed processes because memory ran out (Linux).",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}}},

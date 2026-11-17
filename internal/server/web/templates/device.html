@@ -174,6 +174,7 @@
   </div>
   {{if .Trends}}<div class="trends">{{range $k, $v := .Trends}}{{if gt (len $v) 1}}<div><span class="sub">{{$k}} (90 days)</span>{{sparkline $v}}</div>{{end}}{{end}}</div>{{end}}
   {{range .Messages}}<p class="warn-text small">{{.}}</p>{{end}}
+  {{if or (eq .Protocol "SD") (eq .Bus "eMMC")}}<p class="hint">{{if eq .Protocol "SD"}}SD cards provide no SMART data.{{else}}eMMC reports only wear estimates.{{end}} Read/write errors are taken from the kernel log, see the Events tab.</p>{{end}}
   {{if .Attributes}}
   <details><summary>SMART attributes ({{len .Attributes}})</summary>
     <div class="tablewrap"><table class="compact mono small">

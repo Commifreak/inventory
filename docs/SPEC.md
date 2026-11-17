@@ -90,8 +90,12 @@ software 12 h, autostart 12 h, events 4 h.
   scheduled tasks with boot/logon triggers, automatic services; systemd units,
   cron `@reboot`, XDG autostart, rc.local; launchd.
 - **Events:** bluescreens (bug check 1001), disk/file system errors (disk 7, 11,
-  51, 52, 153; Ntfs 55; stornvme/storahci 129); Linux kernel I/O errors and OOM
-  kills; macOS kernel panics.
+  51, 52, 153; Ntfs 55; stornvme/storahci 129); Linux kernel log from the
+  journal merged with `dmesg` (works with volatile journals/log2ram and without
+  journald): I/O and file system errors, SD card/eMMC errors (`mmc`/`mmcblk`),
+  USB SSD resets, OOM kills; macOS kernel panics.
+- **SD cards / eMMC:** listed in the disk view (no SMART); eMMC life time
+  estimates and pre-EOL state are reported.
 
 Explicitly not collected: browser data, user files, license keys, performance
 time series, CPU temperatures.

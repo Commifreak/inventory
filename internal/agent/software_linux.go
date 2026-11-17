@@ -222,40 +222,115 @@ var (
 		regexp.MustCompile(`(?:I/O|critical medium|critical target) error, dev (\w+)`),
 		regexp.MustCompile(`Buffer I/O error on dev(?:ice)? (\w+)`),
 		regexp.MustCompile(`EXT4-fs error \(device (\w+)\)`),
+		regexp.MustCompile(`EXT4-fs warning \(device (\w+)\): .*I/O error`),
 		regexp.MustCompile(`BTRFS (?:error|critical) \(device (\w+)`),
 		regexp.MustCompile(`XFS \((\w+)\): (?:.*[Cc]orruption|metadata I/O error)`),
+		regexp.MustCompile(`F2FS-fs \((\w+)\): .*(?:error|[Cc]orrupt)`),
 		regexp.MustCompile(`(ata\d+)(?:\.\d+)?: (?:failed command|exception Emask)`),
 		regexp.MustCompile(`(nvme\d+)\w*: (?:I/O \d+ QID \d+ timeout|controller is down|Device not ready|Removing after probe failure)`),
 		regexp.MustCompile(`\[(\w+)\] .*(?:Medium Error|Unrecovered read error)`),
+		regexp.MustCompile(`\[(sd\w+)\] tag#\d+ uas_eh_abort_handler`), // USB SSDs (common on the Raspberry Pi)
+		// SD cards / eMMC (Raspberry Pi and other boards).
+		regexp.MustCompile(`(mmcblk\d+)\w*: error -\d+`),
+		regexp.MustCompile(`(mmc\d+): (?:[Tt]imeout waiting for hardware (?:interrupt|cmd interrupt)|Card stuck|cmd ?\d+ (?:timeout|error)|Controller never released|error -\d+ whilst)`),
 	}
 	ignoreDev = regexp.MustCompile(`^(loop|sr|fd|ram|zram)\d*`)
 )
 
+// kmsg is one kernel log line.
+type kmsg struct {
+	t   time.Time
+	msg string
+}
+
+// collectEventsLinux scans the kernel log. It merges the systemd journal
+// (history across reboots, if persistent) with dmesg (current boot; the
+// only source on systems with a volatile journal such as log2ram setups,
+// or without journald).
 func collectEventsLinux(ctx context.Context, st *State) (any, []string, error) {
 	since := st.EventsSince
 	if since.IsZero() || time.Since(since) > 31*24*time.Hour {
 		since = time.Now().Add(-30 * 24 * time.Hour)
 	}
-	if !hasCmd("journalctl") {
-		return nil, nil, fmt.Errorf("journalctl not available")
+	var recs []kmsg
+	var warns []string
+	sources := 0
+	if hasCmd("journalctl") {
+		out, err := runCmd(ctx, "journalctl", "-k", "--no-pager", "-o", "json", "--output-fields=MESSAGE,__REALTIME_TIMESTAMP", "--since", since.Format("2006-01-02 15:04:05"))
+		if err == nil {
+			recs = append(recs, journalRecords(strings.Split(out, "\n"))...)
+			sources++
+		} else {
+			warns = append(warns, "journal: "+err.Error())
+		}
 	}
-	out, err := runCmd(ctx, "journalctl", "-k", "--no-pager", "-o", "json", "--output-fields=MESSAGE,__REALTIME_TIMESTAMP", "--since", since.Format("2006-01-02 15:04:05"))
-	if err != nil {
-		return nil, nil, err
+	if d, err := dmesgRecords(ctx); err == nil {
+		recs = append(recs, d...)
+		sources++
+	} else {
+		warns = append(warns, "dmesg: "+err.Error())
 	}
-	events := ParseKernelEvents(strings.Split(out, "\n"))
-	return protocol.EventsData{Since: since, Events: events}, nil, nil
+	if sources == 0 {
+		return nil, warns, fmt.Errorf("kernel log not readable (journalctl and dmesg failed)")
+	}
+	var filtered []kmsg
+	for _, r := range recs {
+		if !r.t.Before(since) {
+			filtered = append(filtered, r)
+		}
+	}
+	return protocol.EventsData{Since: since, Events: parseKernelRecords(filtered)}, warns, nil
 }
 
-// ParseKernelEvents extracts OOM kills and disk errors from journalctl JSON
-// lines. Repeated disk errors of one device within a minute are grouped.
-func ParseKernelEvents(lines []string) []protocol.CriticalEvent {
-	type group struct {
-		ev    protocol.CriticalEvent
-		count int
+// dmesgRecords reads the kernel ring buffer of the current boot.
+func dmesgRecords(ctx context.Context) ([]kmsg, error) {
+	if out, err := runCmd(ctx, "dmesg", "--time-format=iso", "--nopager"); err == nil {
+		return parseDmesgISO(out), nil
 	}
-	groups := map[string]*group{}
-	var order []string
+	// BusyBox and old util-linux: "[   12.345678] message" relative to boot.
+	out, err := runCmd(ctx, "dmesg")
+	if err != nil {
+		return nil, err
+	}
+	return parseDmesgRaw(out, BootTime()), nil
+}
+
+func parseDmesgISO(out string) []kmsg {
+	var recs []kmsg
+	for _, l := range strings.Split(out, "\n") {
+		ts, msg, ok := strings.Cut(l, " ")
+		if !ok {
+			continue
+		}
+		t, err := time.Parse("2006-01-02T15:04:05,999999-07:00", ts)
+		if err != nil {
+			continue
+		}
+		recs = append(recs, kmsg{t, strings.TrimSpace(msg)})
+	}
+	return recs
+}
+
+var dmesgRawRe = regexp.MustCompile(`^(?:<\d+>)?\[\s*(\d+)\.(\d+)\]\s?(.*)$`)
+
+func parseDmesgRaw(out string, boot time.Time) []kmsg {
+	var recs []kmsg
+	if boot.IsZero() {
+		return nil
+	}
+	for _, l := range strings.Split(out, "\n") {
+		m := dmesgRawRe.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		sec, _ := strconv.ParseInt(m[1], 10, 64)
+		recs = append(recs, kmsg{boot.Add(time.Duration(sec) * time.Second), m[3]})
+	}
+	return recs
+}
+
+func journalRecords(lines []string) []kmsg {
+	var recs []kmsg
 	for _, l := range lines {
 		if l == "" {
 			continue
@@ -264,16 +339,44 @@ func ParseKernelEvents(lines []string) []protocol.CriticalEvent {
 		if json.Unmarshal([]byte(l), &rec) != nil {
 			continue
 		}
-		msg := journalString(rec["MESSAGE"])
 		tsStr, _ := rec["__REALTIME_TIMESTAMP"].(string)
 		us, _ := strconv.ParseInt(tsStr, 10, 64)
-		ts := time.UnixMicro(us)
+		recs = append(recs, kmsg{time.UnixMicro(us), journalString(rec["MESSAGE"])})
+	}
+	return recs
+}
+
+// ParseKernelEvents extracts events from journalctl JSON lines.
+func ParseKernelEvents(lines []string) []protocol.CriticalEvent {
+	return parseKernelRecords(journalRecords(lines))
+}
+
+// parseKernelRecords extracts OOM kills and disk errors. The same line seen
+// in journal and dmesg is counted once; repeated disk errors of one device
+// within a minute are grouped.
+func parseKernelRecords(recs []kmsg) []protocol.CriticalEvent {
+	sort.SliceStable(recs, func(i, j int) bool { return recs[i].t.Before(recs[j].t) })
+	type group struct {
+		ev    protocol.CriticalEvent
+		count int
+	}
+	groups := map[string]*group{}
+	seenLine := map[string]bool{}
+	var order []string
+	for _, r := range recs {
+		msg, ts := r.msg, r.t
+		// journal and dmesg timestamps differ slightly: dedupe per minute and text.
+		lineKey := fmt.Sprintf("%d|%s", ts.Unix()/60, msg)
+		if seenLine[lineKey] {
+			continue
+		}
+		seenLine[lineKey] = true
 		if m := oomRe.FindStringSubmatch(msg); m != nil {
 			proc := m[2]
 			if proc == "" {
 				proc = m[3]
 			}
-			key := fmt.Sprintf("oom|%d|%s", ts.Unix(), proc)
+			key := fmt.Sprintf("oom|%d|%s", ts.Unix()/60, proc)
 			if _, ok := groups[key]; !ok {
 				groups[key] = &group{ev: protocol.CriticalEvent{Kind: protocol.EventOOM, Time: ts, Source: "kernel", Message: truncateStr(msg, 500), Key: key}}
 				order = append(order, key)
@@ -289,7 +392,7 @@ func ParseKernelEvents(lines []string) []protocol.CriticalEvent {
 			if ignoreDev.MatchString(dev) {
 				break
 			}
-			key := fmt.Sprintf("disk|%s|%d", dev, ts.Unix()/60)
+			key := fmt.Sprintf("disk|%s|%d", diskGroup(dev), ts.Unix()/60)
 			if g, ok := groups[key]; ok {
 				g.count++
 			} else {
@@ -307,11 +410,30 @@ func ParseKernelEvents(lines []string) []protocol.CriticalEvent {
 		}
 		out = append(out, g.ev)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Time.Before(out[j].Time) })
 	if len(out) > 500 {
 		out = out[len(out)-500:]
 	}
 	return out
+}
+
+// diskGroup maps partitions and controllers to their disk so that an error
+// burst on one card (mmc0, mmcblk0, mmcblk0p2) forms one event per minute.
+var (
+	mmcblkRe = regexp.MustCompile(`^mmcblk(\d+)`)
+	nvmeRe   = regexp.MustCompile(`^(nvme\d+)`)
+)
+
+func diskGroup(dev string) string {
+	if m := mmcblkRe.FindStringSubmatch(dev); m != nil {
+		return "mmc" + m[1]
+	}
+	if m := nvmeRe.FindStringSubmatch(dev); m != nil {
+		return m[1]
+	}
+	if strings.HasPrefix(dev, "sd") {
+		return strings.TrimRight(dev, "0123456789")
+	}
+	return dev
 }
 
 // journalString decodes MESSAGE, which journald emits as an array of bytes

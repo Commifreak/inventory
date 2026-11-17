@@ -81,6 +81,9 @@ new version does not come up and check in, the previous binary is restored.
   client needs outbound HTTPS to the server URL (no inbound ports).
 - *No SMART data on Windows*: RAID controllers and some USB enclosures hide
   disks; the agent falls back to the Windows storage API (less detail).
+- *Raspberry Pi / SD cards*: SD cards have no SMART. They are listed in the
+  Disks tab; read/write errors are detected from the kernel log (journal and
+  `dmesg`) and raise the "Disk errors in system log" alert.
 - *Wi-Fi name missing on Windows 11 24H2+*: Windows only reveals the SSID with
   location services enabled.
 - *Update searches fail*: shown as "check failing" with the Windows Update

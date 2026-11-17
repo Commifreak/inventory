@@ -568,22 +568,6 @@ func linuxBatteries() []protocol.Battery {
 // ---------------------------------------------------------------------------
 
 func collectSmartLinux(ctx context.Context, _ *State) (any, []string, error) {
-	bin := "smartctl"
-	if !hasCmd(bin) {
-		for _, p := range []string{"/usr/sbin/smartctl", "/sbin/smartctl", "/usr/local/sbin/smartctl"} {
-			if fileExists(p) {
-				bin = p
-			}
-		}
-	}
-	if !hasCmd(bin) && !fileExists(bin) {
-		return nil, nil, fmt.Errorf("smartctl not found - install the smartmontools package")
-	}
-	disks, version, warns, err := SmartctlDisks(ctx, bin)
-	if err != nil {
-		return nil, warns, err
-	}
-	// Map system disk and USB disks via lsblk.
 	var sysSerial, sysPath string
 	usb := map[string]bool{}
 	walkBlk(lsblk(ctx), func(n, disk lsblkDev, _ bool) {
@@ -597,6 +581,32 @@ func collectSmartLinux(ctx context.Context, _ *State) (any, []string, error) {
 			}
 		}
 	})
+	// SD cards and eMMC have no SMART; list them so they are visible, with
+	// eMMC wear data where available. Their errors come from the kernel log.
+	mmc := mmcDisks("/sys/block", sysPath)
+
+	bin := "smartctl"
+	if !hasCmd(bin) {
+		for _, p := range []string{"/usr/sbin/smartctl", "/sbin/smartctl", "/usr/local/sbin/smartctl"} {
+			if fileExists(p) {
+				bin = p
+			}
+		}
+	}
+	if !hasCmd(bin) && !fileExists(bin) {
+		if len(mmc) > 0 {
+			return protocol.SmartData{Source: "sysfs (smartctl not installed)", Disks: mmc},
+				[]string{"smartctl not found - install smartmontools for USB/SATA/NVMe disks"}, nil
+		}
+		return nil, nil, fmt.Errorf("smartctl not found - install the smartmontools package")
+	}
+	disks, version, warns, err := SmartctlDisks(ctx, bin)
+	if err != nil {
+		if len(mmc) > 0 {
+			return protocol.SmartData{Source: "sysfs", Disks: mmc}, append(warns, "smartctl: "+err.Error()), nil
+		}
+		return nil, warns, err
+	}
 	for i := range disks {
 		d := &disks[i]
 		if (sysSerial != "" && strings.EqualFold(d.Serial, sysSerial)) || (sysPath != "" && strings.HasPrefix(sysPath, d.Device)) {
@@ -606,5 +616,58 @@ func collectSmartLinux(ctx context.Context, _ *State) (any, []string, error) {
 			d.External, d.Bus = true, "USB"
 		}
 	}
+	disks = append(disks, mmc...)
 	return protocol.SmartData{Source: version, Disks: disks}, warns, nil
+}
+
+var mmcNameRe = regexp.MustCompile(`^mmcblk\d+$`)
+
+// mmcDisks describes SD cards and eMMC devices from sysfs.
+func mmcDisks(sysBlock, sysPath string) []protocol.Disk {
+	entries, _ := os.ReadDir(sysBlock)
+	var out []protocol.Disk
+	for _, e := range entries {
+		name := e.Name()
+		if !mmcNameRe.MatchString(name) {
+			continue
+		}
+		dev := filepath.Join(sysBlock, name, "device")
+		typ := readTrim(filepath.Join(dev, "type")) // "SD" or "MMC"
+		d := protocol.Disk{Device: "/dev/" + name, Model: readTrim(filepath.Join(dev, "name")), Serial: readTrim(filepath.Join(dev, "serial")),
+			Protocol: typ, MediaType: "Flash", Bus: typ, System: sysPath == "/dev/"+name}
+		if typ == "MMC" {
+			d.Bus = "eMMC"
+		}
+		if d.Serial != "" && d.Model != "" {
+			d.Serial = d.Model + "-" + d.Serial // card serials are only unique per vendor
+		}
+		if sectors, err := strconv.ParseUint(readTrim(filepath.Join(sysBlock, name, "size")), 10, 64); err == nil {
+			d.SizeBytes = sectors * 512
+		}
+		if date := readTrim(filepath.Join(dev, "date")); date != "" {
+			d.Firmware = "manufactured " + date
+		}
+		// eMMC 5.0+: life_time "0xA 0xB" (estimates in 10% steps, 0x0B = exceeded), pre_eol_info.
+		if lt := strings.Fields(readTrim(filepath.Join(dev, "life_time"))); len(lt) > 0 {
+			max := 0
+			for _, v := range lt {
+				if n, err := strconv.ParseInt(strings.TrimPrefix(v, "0x"), 16, 64); err == nil && int(n) > max {
+					max = int(n)
+				}
+			}
+			if max > 0 {
+				used := max * 10
+				d.PercentUsed = &used
+			}
+		}
+		switch readTrim(filepath.Join(dev, "pre_eol_info")) {
+		case "0x02", "0x2":
+			d.Messages = append(d.Messages, "eMMC reserved blocks: warning (80% consumed)")
+		case "0x03", "0x3":
+			d.Messages = append(d.Messages, "eMMC reserved blocks: urgent (90% consumed)")
+			d.HealthPassed = boolPtr(false)
+		}
+		out = append(out, d)
+	}
+	return out
 }

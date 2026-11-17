@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -193,3 +195,63 @@ func TestParseWindowsEvents(t *testing.T) {
 }
 
 func runtimeArch() string { return runtime.GOARCH }
+
+func TestKernelEventsSDCardAndDmesg(t *testing.T) {
+	boot := time.Date(2026, 11, 17, 6, 0, 0, 0, time.UTC)
+	raw := "[  100.000001] mmc0: Timeout waiting for hardware interrupt.\n" +
+		"[  100.500000] mmcblk0: error -110 transferring data, sector 1234, nr 8, cmd response 0x900\n" +
+		"[  101.000000] I/O error, dev mmcblk0, sector 1234 op 0x1:(WRITE) flags 0x0\n" +
+		"[  200.000000] EXT4-fs warning (device mmcblk0p2): ext4_end_bio:342: I/O error 10 writing to inode 1234\n" +
+		"[  300.000000] usb 1-1.2: new high-speed USB device\n"
+	recs := parseDmesgRaw(raw, boot)
+	if len(recs) != 5 || !recs[0].t.Equal(boot.Add(100*time.Second)) {
+		t.Fatalf("raw dmesg: %+v", recs)
+	}
+	iso := parseDmesgISO("2026-11-17T06:01:40,000001+00:00 mmc0: Timeout waiting for hardware interrupt.\n")
+	if len(iso) != 1 || !iso[0].t.Equal(boot.Add(100*time.Second+time.Microsecond)) {
+		t.Fatalf("iso dmesg: %+v", iso)
+	}
+	// The same line from the journal is not counted twice.
+	journal := journalRecords([]string{`{"MESSAGE":"I/O error, dev mmcblk0, sector 1234 op 0x1:(WRITE) flags 0x0","__REALTIME_TIMESTAMP":"` +
+		strconv.FormatInt(boot.Add(101*time.Second).UnixMicro(), 10) + `"}`})
+	evs := parseKernelRecords(append(recs, journal...))
+	// mmc0 (host) and mmcblk0 (card) at minute 1 form one group, ext4 warning at minute 3 another.
+	if len(evs) != 2 {
+		t.Fatalf("expected 2 events, got %+v", evs)
+	}
+	if evs[0].Kind != protocol.EventDiskError || !strings.Contains(evs[0].Message, "+2 similar") {
+		t.Fatalf("grouping: %+v", evs[0])
+	}
+	if evs[1].Device != "mmcblk0p2" {
+		t.Fatalf("ext4 warning: %+v", evs[1])
+	}
+}
+
+func TestMMCDisks(t *testing.T) {
+	root := t.TempDir()
+	write := func(p, v string) {
+		_ = os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755)
+		_ = os.WriteFile(filepath.Join(root, p), []byte(v+"\n"), 0o644)
+	}
+	write("mmcblk0/size", "62333952")
+	write("mmcblk0/device/type", "SD")
+	write("mmcblk0/device/name", "SN64G")
+	write("mmcblk0/device/serial", "0x1234abcd")
+	write("mmcblk1/size", "30535680")
+	write("mmcblk1/device/type", "MMC")
+	write("mmcblk1/device/name", "8GTF4R")
+	write("mmcblk1/device/life_time", "0x09 0x0a")
+	write("mmcblk1/device/pre_eol_info", "0x03")
+	write("mmcblk1boot0/size", "8192")
+	disks := mmcDisks(root, "/dev/mmcblk0")
+	if len(disks) != 2 {
+		t.Fatalf("expected 2 disks, got %+v", disks)
+	}
+	sd, emmc := disks[0], disks[1]
+	if !sd.System || sd.Bus != "SD" || sd.SizeBytes != 62333952*512 || sd.Serial != "SN64G-0x1234abcd" || sd.HealthPassed != nil {
+		t.Fatalf("sd: %+v", sd)
+	}
+	if emmc.Bus != "eMMC" || emmc.PercentUsed == nil || *emmc.PercentUsed != 100 || emmc.HealthPassed == nil || *emmc.HealthPassed {
+		t.Fatalf("emmc: %+v", emmc)
+	}
+}
