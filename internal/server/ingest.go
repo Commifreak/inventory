@@ -158,32 +158,75 @@ func (s *Server) diffSoftware(ctx context.Context, tx *sql.Tx, deviceID string, 
 	if err := json.Unmarshal([]byte(prevRaw.String), &prev); err != nil {
 		return nil
 	}
-	old := map[string]protocol.SoftwareItem{}
-	for _, it := range prev.Items {
-		old[it.Key()] = it
-	}
-	seen := map[string]bool{}
-	for _, it := range cur.Items {
-		k := it.Key()
-		seen[k] = true
-		o, ok := old[k]
-		switch {
-		case !ok:
-			if err := s.store.AddSoftwareChange(ctx, tx, store.SoftwareChange{DeviceID: deviceID, Time: at, Change: "installed", Name: it.Name, Source: it.Source, Scope: it.Scope, VersionNew: it.Version}); err != nil {
-				return err
-			}
-		case o.Version != it.Version:
-			if err := s.store.AddSoftwareChange(ctx, tx, store.SoftwareChange{DeviceID: deviceID, Time: at, Change: "updated", Name: it.Name, Source: it.Source, Scope: it.Scope, VersionOld: o.Version, VersionNew: it.Version}); err != nil {
-				return err
-			}
-		}
-	}
-	for k, o := range old {
-		if !seen[k] {
-			if err := s.store.AddSoftwareChange(ctx, tx, store.SoftwareChange{DeviceID: deviceID, Time: at, Change: "removed", Name: o.Name, Source: o.Source, Scope: o.Scope, VersionOld: o.Version}); err != nil {
-				return err
-			}
+	for _, c := range softwareChanges(prev.Items, cur.Items) {
+		c.DeviceID, c.Time = deviceID, at
+		if err := s.store.AddSoftwareChange(ctx, tx, c); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// softwareChanges compares two inventories. Items are grouped by Key; a key
+// can occur several times (e.g. a stale uninstall entry of an older version
+// next to the current one), so the versions of a key are compared as a
+// multiset: unchanged versions are ignored, the remaining old/new versions
+// are paired as updates and any surplus counts as installed or removed.
+func softwareChanges(prev, cur []protocol.SoftwareItem) []store.SoftwareChange {
+	group := func(items []protocol.SoftwareItem) (map[string][]protocol.SoftwareItem, []string) {
+		m := map[string][]protocol.SoftwareItem{}
+		var order []string
+		for _, it := range items {
+			k := it.Key()
+			if _, ok := m[k]; !ok {
+				order = append(order, k)
+			}
+			m[k] = append(m[k], it)
+		}
+		return m, order
+	}
+	oldG, oldOrder := group(prev)
+	newG, newOrder := group(cur)
+	var out []store.SoftwareChange
+	mk := func(change string, it protocol.SoftwareItem) store.SoftwareChange {
+		return store.SoftwareChange{Change: change, Name: it.Name, Source: it.Source, Scope: it.Scope}
+	}
+	for _, k := range newOrder {
+		olds := slices.Clone(oldG[k])
+		var added []protocol.SoftwareItem
+		for _, it := range newG[k] {
+			if i := slices.IndexFunc(olds, func(o protocol.SoftwareItem) bool { return o.Version == it.Version }); i >= 0 {
+				olds = slices.Delete(olds, i, i+1)
+			} else {
+				added = append(added, it)
+			}
+		}
+		for i, it := range added {
+			if i < len(olds) {
+				c := mk("updated", it)
+				c.VersionOld, c.VersionNew = olds[i].Version, it.Version
+				out = append(out, c)
+				continue
+			}
+			c := mk("installed", it)
+			c.VersionNew = it.Version
+			out = append(out, c)
+		}
+		for _, o := range olds[min(len(added), len(olds)):] {
+			c := mk("removed", o)
+			c.VersionOld = o.Version
+			out = append(out, c)
+		}
+	}
+	for _, k := range oldOrder {
+		if _, ok := newG[k]; ok {
+			continue
+		}
+		for _, o := range oldG[k] {
+			c := mk("removed", o)
+			c.VersionOld = o.Version
+			out = append(out, c)
+		}
+	}
+	return out
 }
