@@ -3,9 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/commifreak/inventory/internal/protocol"
 )
 
 // ---------------------------------------------------------------------------
@@ -355,4 +358,39 @@ func (s *Store) FlagSince(ctx context.Context, deviceID, flag string) (time.Time
 		return time.Time{}, err
 	}
 	return time.Unix(since, 0), nil
+}
+
+// AgentDiagnostics are the latest diagnostics an agent reported.
+type AgentDiagnostics struct {
+	ReceivedAt time.Time                 `json:"received_at"`
+	Data       protocol.AgentDiagnostics `json:"data"`
+}
+
+// PutAgentDiagnostics replaces the diagnostics of a device.
+func (s *Store) PutAgentDiagnostics(ctx context.Context, deviceID string, at time.Time, d protocol.AgentDiagnostics) error {
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO agent_diagnostics(device_id, received_at, data) VALUES(?,?,?)
+ ON CONFLICT(device_id) DO UPDATE SET received_at=excluded.received_at, data=excluded.data`, deviceID, at.Unix(), string(b))
+	return err
+}
+
+// GetAgentDiagnostics returns the diagnostics of a device; nil if none were reported.
+func (s *Store) GetAgentDiagnostics(ctx context.Context, deviceID string) (*AgentDiagnostics, error) {
+	var at int64
+	var data string
+	err := s.DB.QueryRowContext(ctx, `SELECT received_at, data FROM agent_diagnostics WHERE device_id=?`, deviceID).Scan(&at, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := &AgentDiagnostics{ReceivedAt: time.Unix(at, 0)}
+	if err := json.Unmarshal([]byte(data), &out.Data); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

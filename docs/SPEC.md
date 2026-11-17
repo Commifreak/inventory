@@ -32,7 +32,10 @@ out of scope.
 
 JSON over HTTPS below `/api/agent/v1` (see `internal/protocol`). Agents use the system
 proxy (environment; Windows WinHTTP + user WinINet settings incl. PAC/WPAD;
-Linux /etc/environment; macOS network settings), Basic proxy auth only.
+Linux /etc/environment; macOS network settings), Basic proxy auth only. Every
+check-in carries agent diagnostics (proxy in use, latest 20 warnings/errors kept
+in diag.json, also from offline periods), shown on the Agent tab and in the raw
+export; no alert rule.
 
 1. **Enroll** with the enrollment token from the installer → per-device credential
    (stored DPAPI-protected on Windows, root-only on Unix). The token is removed from

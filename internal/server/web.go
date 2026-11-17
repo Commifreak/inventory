@@ -59,6 +59,19 @@ func newWebUI(s *Server) (*webUI, error) {
 			}
 			return buf.String()
 		},
+		"toJSON": func(v any) string {
+			b, err := json.MarshalIndent(v, "", "  ")
+			if err != nil {
+				return err.Error()
+			}
+			return string(b)
+		},
+		"logLevelClass": func(level string) string {
+			if strings.HasPrefix(level, "ERROR") {
+				return "st-critical"
+			}
+			return "st-warning"
+		},
 		"add": func(a, b int) int { return a + b },
 		"div": func(a, b int) int {
 			if b == 0 {

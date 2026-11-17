@@ -206,7 +206,10 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatal("manual update not offered")
 	}
 	// Reporting the new version clears update-now.
-	postJSON(t, api+"/checkin", cred, protocol.CheckinRequest{AgentVersion: "0.1.0", UpdateResult: &protocol.UpdateResult{FromVersion: "0.0.9", ToVersion: "0.1.0", Success: true, Time: now}}, &cr)
+	postJSON(t, api+"/checkin", cred, protocol.CheckinRequest{AgentVersion: "0.1.0", UpdateResult: &protocol.UpdateResult{FromVersion: "0.0.9", ToVersion: "0.1.0", Success: true, Time: now},
+		Diagnostics: &protocol.AgentDiagnostics{Proxy: "http://proxy.lan:3128 (WinHTTP (netsh winhttp))", Log: []protocol.AgentLogEntry{
+			{Time: now.Add(-time.Hour), Level: "WARN", Message: "report failed err=server returned 502"},
+			{Time: now, Level: "ERROR", Message: "update failed to=0.1.1 err=signature mismatch"}}}}, &cr)
 	d, _ := s.store.DeviceByID(ctx, er.DeviceID)
 	if d.UpdateNowVersion != "" || d.AgentVersion != "0.1.0" {
 		t.Fatalf("update-now not cleared: %+v", d)
@@ -300,6 +303,13 @@ func TestEndToEnd(t *testing.T) {
 	s.eol.mu.Unlock()
 	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=software"); !strings.Contains(p, "Office support") || !strings.Contains(p, "ended 2025-10-14") {
 		t.Errorf("office support status missing on the software tab")
+	}
+	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=agent"); !strings.Contains(p, "Agent diagnostics") || !strings.Contains(p, "proxy.lan:3128") ||
+		!strings.Contains(p, "signature mismatch") || strings.Index(p, "signature mismatch") > strings.Index(p, "server returned 502") {
+		t.Errorf("agent diagnostics missing or not newest first")
+	}
+	if raw := get(t, c, ts.URL+"/devices/"+er.DeviceID+"/raw.json"); !strings.Contains(raw, `"agent_diagnostics"`) || !strings.Contains(raw, "server returned 502") {
+		t.Errorf("raw export lacks agent diagnostics")
 	}
 	if raw := get(t, c, ts.URL+"/devices/"+er.DeviceID+"/raw.json"); !strings.Contains(raw, `"sections"`) || !strings.Contains(raw, "Samsung SSD 870") {
 		t.Errorf("raw export incomplete")

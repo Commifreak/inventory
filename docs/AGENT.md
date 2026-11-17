@@ -39,6 +39,7 @@ machine id) and its history.
 | Binary | `C:\Program Files\Inventory Agent\inventory-agent.exe` | `/usr/local/lib/inventory-agent/inventory-agent` | `/Library/Application Support/Inventory Agent/inventory-agent` |
 | Config/state | `C:\ProgramData\Inventory Agent\` (SYSTEM + Administrators only, credential DPAPI-protected) | `/var/lib/inventory-agent/` (root, 0700) | `.../Inventory Agent/data/` |
 | Log | `C:\ProgramData\Inventory Agent\agent.log` | `journalctl -u inventory-agent` | `.../data/agent.log` |
+| Diagnostics | `diag.json` in the config/state directory: the latest 20 warnings/errors, sent with every check-in | | |
 | Service | `InventoryAgent` | `inventory-agent.service` | `io.github.commifreak.inventory-agent` |
 
 ## Command line
@@ -103,6 +104,10 @@ new version does not come up and check in, the previous binary is restored.
 
 ## Troubleshooting
 
+- *Agent problems*: the *Agent* tab shows "Agent diagnostics" – the proxy in use
+  and the latest warnings/errors of the agent (last 30 days, also those logged
+  while the server was unreachable; sent with the next check-in). The raw data
+  export contains them too.
 - *Device does not appear*: check `inventory-agent status` and the log. The
   client needs outbound HTTPS to the server URL (no inbound ports), directly or
   through the system proxy (see *Proxy*).

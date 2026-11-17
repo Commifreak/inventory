@@ -36,7 +36,7 @@ job on `windows-latest` runs the real collectors (`inventory-agent collect`) as 
 | `cmd/inventory-server`, `cmd/inventory-agent`, `cmd/inventory-release` | entry points (server, agent CLI/installer, manifest + signing tool) |
 | `internal/protocol` | wire format shared by agent and server (`data.go` = collector payloads) |
 | `internal/server` | HTTP handlers, ingest, alert rules (`alerts.go` catalog), update targeting (`agents.go`), OIDC, web UI (`web/templates`, `web/static`) |
-| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0003_*.sql`) |
+| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0004_*.sql`) |
 | `internal/agent` | agent loop, self-update, collectors per OS (`*_windows.go`, `*_linux.go`, `*_darwin.go`), installers |
 | `internal/release` | Ed25519 signing; trusted public key in `keys/official.pub` |
 | `internal/tag` | install tag (server URL + enrollment token) appended to Windows installers |

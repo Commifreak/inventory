@@ -389,6 +389,22 @@
 </section>{{end}}
 
 <section class="card">
+  <h2>Agent diagnostics</h2>
+  {{with $d.Diag}}
+  <dl>
+    <dt>Proxy</dt><dd class="mono small">{{or .Data.Proxy "–"}}</dd>
+    <dt>Reported</dt><dd>{{fmtTime .ReceivedAt}} <span class="muted">({{ago .ReceivedAt}})</span></dd>
+  </dl>
+  {{if $d.DiagLog}}
+  <p class="hint">Latest warnings and errors of the agent (newest first), including those logged while the server was unreachable.</p>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead><tbody>
+  {{range $d.DiagLog}}<tr><td class="nowrap">{{fmtTime .Time}}</td><td><span class="badge {{logLevelClass .Level}}">{{.Level}}</span></td><td class="mono small">{{.Message}}</td></tr>{{end}}
+  </tbody></table></div>
+  {{else}}<p class="muted">No warnings or errors in the last 30 days.</p>{{end}}
+  {{else}}<p class="muted">Not reported yet – agents send diagnostics from this version on, with their next check-in.</p>{{end}}
+</section>
+
+<section class="card">
   <h2>Collectors</h2>
   <table class="compact"><thead><tr><th>Collector</th><th>Last run</th><th>Duration</th><th>Status</th></tr></thead><tbody>
   {{range collectors}}{{$s := index $d.Snaps .}}<tr><td>{{.}}</td>
@@ -414,6 +430,12 @@
   <div class="cardhead"><h2>Raw data</h2><a class="button" href="/devices/{{$dev.ID}}/raw.json">Download JSON</a></div>
   <p class="hint">Exactly what the agent reported, per collector. The download also contains the critical events of the last 90 days.
   It includes user names, IP/MAC addresses and serial numbers – keep that in mind before sharing it.</p>
+</section>
+<section class="card">
+  <details>
+    <summary><b>agent diagnostics</b>{{with $d.Diag}} – reported {{fmtTime .ReceivedAt}}{{if .Data.Log}} · <span class="warn-text">{{len .Data.Log}} log entr{{if eq (len .Data.Log) 1}}y{{else}}ies{{end}}</span>{{end}}{{else}} – not reported yet{{end}}</summary>
+    {{with $d.Diag}}<pre class="raw">{{toJSON .Data}}</pre>{{end}}
+  </details>
 </section>
 {{range collectors}}{{$s := index $d.Snaps .}}
 <section class="card">

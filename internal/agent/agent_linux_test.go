@@ -63,7 +63,10 @@ func TestAgentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, _ := LoadConfig()
-	a := &Agent{cfg: cfg, state: LoadState(), log: slog.New(slog.NewTextHandler(io.Discard, nil)), client: NewClient(cfg.ServerURL, ""),
+	oldDiag := diag
+	diag = &diagLog{path: diagPath}
+	defer func() { diag = oldDiag }()
+	a := &Agent{cfg: cfg, state: LoadState(), log: slog.New(newDiagHandler(slog.NewTextHandler(io.Discard, nil), diag)), client: NewClient(cfg.ServerURL, ""),
 		colls: map[string]Collector{
 			protocol.CollectSoftware: func(context.Context, *State) (any, []string, error) {
 				return protocol.SoftwareData{Items: []protocol.SoftwareItem{{Name: "bash", Version: "5.2", Source: "dpkg"}}}, nil, nil
@@ -93,6 +96,13 @@ func TestAgentLifecycle(t *testing.T) {
 	}
 	if !st.LastRun[protocol.CollectSoftware].After(time.Now().Add(-time.Minute)) {
 		t.Fatal("software collector did not run")
+	}
+	// The failing SMART collector was logged as a warning and kept for the server.
+	if b, _ := os.ReadFile(diagPath()); !bytes.Contains(b, []byte("no smartctl")) {
+		t.Fatalf("collector warning not kept in diag.json: %s", b)
+	}
+	if d := a.diagnostics(); d.Proxy != "none (direct connection)" || len(d.Log) == 0 {
+		t.Fatalf("diagnostics: %+v", d)
 	}
 
 	// The "new" process starts: the update is confirmed at the next check-in.

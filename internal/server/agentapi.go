@@ -168,6 +168,9 @@ func (s *Server) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.AgentVersion = req.AgentVersion
+	if diag := req.Diagnostics; diag != nil {
+		_ = s.store.PutAgentDiagnostics(ctx, d.ID, now, sanitizeDiagnostics(*diag))
+	}
 
 	// Update bookkeeping.
 	if ur := req.UpdateResult; ur != nil {
@@ -349,4 +352,24 @@ func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 		"Token":     tok.Token,
 		"APIPrefix": protocol.APIPrefix,
 	})
+}
+
+// sanitizeDiagnostics limits what an agent can store.
+func sanitizeDiagnostics(d protocol.AgentDiagnostics) protocol.AgentDiagnostics {
+	const maxEntries, maxLen = 50, 2000
+	if n := len(d.Log) - maxEntries; n > 0 {
+		d.Log = d.Log[n:]
+	}
+	clip := func(s string) string {
+		if len(s) > maxLen {
+			return strings.ToValidUTF8(s[:maxLen], "") + "…"
+		}
+		return s
+	}
+	d.Proxy = clip(d.Proxy)
+	for i := range d.Log {
+		d.Log[i].Message = clip(d.Log[i].Message)
+		d.Log[i].Level = clip(d.Log[i].Level)
+	}
+	return d
 }

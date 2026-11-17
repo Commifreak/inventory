@@ -62,6 +62,25 @@ type CheckinRequest struct {
 	LastCollected map[string]time.Time `json:"last_collected,omitzero"`
 	// UpdateResult is set once after an update attempt.
 	UpdateResult *UpdateResult `json:"update_result,omitempty"`
+	// Diagnostics describe the agent itself (absent from older agents).
+	Diagnostics *AgentDiagnostics `json:"diagnostics,omitempty"`
+}
+
+// AgentDiagnostics help to troubleshoot an agent from the server.
+type AgentDiagnostics struct {
+	// Proxy used to reach the server: "none (direct connection)" or
+	// "http://proxy:3128 (source)".
+	Proxy string `json:"proxy,omitempty"`
+	// Log holds the latest warnings and errors of the agent, oldest first,
+	// including those that occurred while the server was unreachable.
+	Log []AgentLogEntry `json:"log,omitempty"`
+}
+
+// AgentLogEntry is a warning or error logged by the agent.
+type AgentLogEntry struct {
+	Time    time.Time `json:"time"`
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
 }
 
 // CheckinResponse returns the current configuration and optional work.

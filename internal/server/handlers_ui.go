@@ -319,6 +319,14 @@ func (w *webUI) handleDevice(rw http.ResponseWriter, r *http.Request) {
 		data["UpdateLog"] = logs
 		data["Config"] = s.collectionConfig(ctx)
 		data["OfflineDefault"] = s.alertSettings(ctx).Rules["offline"].Params["hours"]
+		if diag, _ := s.store.GetAgentDiagnostics(ctx, d.ID); diag != nil {
+			data["Diag"] = diag
+			rev := slices.Clone(diag.Data.Log)
+			slices.Reverse(rev)
+			data["DiagLog"] = rev
+		}
+	case "raw":
+		data["Diag"], _ = s.store.GetAgentDiagnostics(ctx, d.ID)
 	}
 	w.render(rw, r, "device", page{Title: d.Name(), Nav: "devices", Data: data})
 }
@@ -332,6 +340,7 @@ func (w *webUI) handleDeviceRaw(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	snaps, _ := w.s.store.Snapshots(ctx, d.ID)
 	events, _ := w.s.store.Events(ctx, d.ID, time.Now().AddDate(0, 0, -90), 1000)
+	diag, _ := w.s.store.GetAgentDiagnostics(ctx, d.ID)
 	type section struct {
 		CollectedAt time.Time       `json:"collected_at"`
 		DurationMs  int64           `json:"duration_ms"`
@@ -345,7 +354,9 @@ func (w *webUI) handleDeviceRaw(rw http.ResponseWriter, r *http.Request) {
 		Device   map[string]any     `json:"device"`
 		Sections map[string]section `json:"sections"`
 		Events   []store.Event      `json:"events"`
-	}{Exported: time.Now().UTC(), Server: w.s.cfg.Version, Sections: map[string]section{}, Events: events,
+		// AgentDiagnostics: proxy and latest agent warnings/errors.
+		AgentDiagnostics *store.AgentDiagnostics `json:"agent_diagnostics,omitempty"`
+	}{Exported: time.Now().UTC(), Server: w.s.cfg.Version, Sections: map[string]section{}, Events: events, AgentDiagnostics: diag,
 		Device: map[string]any{"id": d.ID, "hostname": d.Hostname, "os": d.OS, "arch": d.Arch, "agent_version": d.AgentVersion,
 			"enrolled_at": d.EnrolledAt, "last_seen_at": d.LastSeenAt, "ring": d.Ring, "update_state": d.UpdateState, "update_error": d.UpdateError}}
 	for name, sn := range snaps {

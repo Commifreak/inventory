@@ -46,6 +46,7 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		}
 		return fmt.Errorf("load config: %w", err)
 	}
+	log = slog.New(newDiagHandler(log.Handler(), diag)) // warnings/errors go to the server too
 	proxyLog = log
 	a := &Agent{cfg: cfg, state: LoadState(), log: log, colls: Collectors()}
 	a.client = NewClient(cfg.ServerURL, cfg.Credential)
@@ -137,7 +138,7 @@ func (a *Agent) cycle(ctx context.Context) (time.Duration, error) {
 			return 0, err
 		}
 	}
-	req := protocol.CheckinRequest{AgentVersion: Version, Identity: Identity(), BootTime: BootTime(), AgentTime: time.Now(), LastCollected: a.state.LastRun, UpdateResult: a.state.UpdateResult}
+	req := protocol.CheckinRequest{AgentVersion: Version, Identity: Identity(), BootTime: BootTime(), AgentTime: time.Now(), LastCollected: a.state.LastRun, UpdateResult: a.state.UpdateResult, Diagnostics: a.diagnostics()}
 	resp, err := a.client.Checkin(ctx, req)
 	if errors.Is(err, ErrUnauthorized) {
 		return 6 * time.Hour, errors.New("the server does not know this device any more (deleted?) - reinstall the agent to enroll it again")
