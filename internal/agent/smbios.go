@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/binary"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/commifreak/inventory/internal/protocol"
@@ -252,6 +253,34 @@ func smbiosSlotType(t byte) (name, kind string) {
 	return fmt.Sprintf("type 0x%02X", t), "other"
 }
 
+var (
+	m2Name     = regexp.MustCompile(`(?i)(^|[^A-Z0-9])M\.?2([^0-9]|$)|NGFF`) // "M.2 SSD1", "M.2_1", "M2_1"
+	m2Storage  = regexp.MustCompile(`(?i)SSD|NVME|STORAGE|SATA|DISK`)
+	m2Wireless = regexp.MustCompile(`(?i)WLAN|WIFI|WI-FI|WWAN|LTE|5G|BT\b|BLUETOOTH|KEY ?[AE]\b`)
+)
+
+// classifyM2Slot handles vendors (e.g. HP) that describe M.2 slots with a
+// PCIe slot type: the designation ("M.2 SSD1", "M.2 WLAN/BT") tells what the
+// slot is for.
+func classifyM2Slot(sl protocol.SystemSlot) (typ, kind string) {
+	typ, kind = sl.Type, sl.Kind
+	if !m2Name.MatchString(sl.Designation) {
+		return typ, kind
+	}
+	if !strings.HasPrefix(typ, "M.2") && !strings.HasPrefix(typ, "U.2") {
+		typ = "M.2 · " + typ
+	}
+	switch {
+	case m2Storage.MatchString(sl.Designation):
+		kind = "storage"
+	case m2Wireless.MatchString(sl.Designation):
+		kind = "wireless"
+	case kind == "expansion" && sl.Width == "x4":
+		kind = "storage" // x4 M.2 slots are SSD slots
+	}
+	return typ, kind
+}
+
 func smbiosSlots(structs []smbiosStruct) []protocol.SystemSlot {
 	var out []protocol.SystemSlot
 	for _, s := range structs {
@@ -267,6 +296,7 @@ func smbiosSlots(structs []smbiosStruct) []protocol.SystemSlot {
 		if w, ok := s.byteAt(0x06); ok {
 			sl.Width = smbiosSlotWidths[w]
 		}
+		sl.Type, sl.Kind = classifyM2Slot(sl)
 		switch u, _ := s.byteAt(0x07); u {
 		case 0x03:
 			sl.Usage = "available"

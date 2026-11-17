@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"unsafe"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/commifreak/inventory/internal/protocol"
 )
+
+var pciVenRe = regexp.MustCompile(`^PCI\\VEN_([0-9A-F]{4})`)
 
 var (
 	procGetSystemFirmwareTable = modkernel32.NewProc("GetSystemFirmwareTable")
@@ -86,6 +89,16 @@ func windowsStorageControllers() ([]protocol.StorageController, error) {
 		}
 		sc := protocol.StorageController{Name: strings.TrimSpace(c.Name), Vendor: strings.TrimSpace(c.Manufacturer), Driver: c.Service,
 			Location: c.DeviceID, Type: windowsStorageType(c.CompatibleID)}
+		// The PnP manufacturer is often the driver's ("Standard NVM Express
+		// Controller", localized); prefer the vendor from the PCI ID.
+		if m := pciVenRe.FindStringSubmatch(id); m != nil {
+			if v := pciVendorFallback[strings.ToLower(m[1])]; v != "" {
+				sc.Vendor = v
+			}
+		}
+		if sc.Vendor == sc.Name {
+			sc.Vendor = ""
+		}
 		if sc.Type == "storage" { // no PCI class code, e.g. Hyper-V (VMBus)
 			sc.Type = map[string]string{"SCSIADAPTER": "SCSI", "HDC": "IDE/ATA"}[strings.ToUpper(c.PNPClass)]
 		}

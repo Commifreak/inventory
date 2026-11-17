@@ -109,3 +109,25 @@ func TestSMBIOSMemoryAndSlots(t *testing.T) {
 		applySMBIOS(&hw, table[:i])
 	}
 }
+
+func TestClassifyM2Slot(t *testing.T) {
+	cases := []struct {
+		in           protocol.SystemSlot
+		wantT, wantK string
+	}{
+		// HP: M.2 slots described as PCIe slot types.
+		{protocol.SystemSlot{Designation: "M.2 SSD1", Type: "PCIe Gen3 x4", Kind: "expansion", Width: "x4"}, "M.2 · PCIe Gen3 x4", "storage"},
+		{protocol.SystemSlot{Designation: "M.2 WLAN/BT", Type: "PCIe Gen3 x1", Kind: "expansion", Width: "x1"}, "M.2 · PCIe Gen3 x1", "wireless"},
+		{protocol.SystemSlot{Designation: "M.2 WWAN", Type: "PCIe Gen3 x1", Kind: "expansion", Width: "x1"}, "M.2 · PCIe Gen3 x1", "wireless"},
+		{protocol.SystemSlot{Designation: "M2_2", Type: "PCIe Gen4 x4", Kind: "expansion", Width: "x4"}, "M.2 · PCIe Gen4 x4", "storage"},
+		{protocol.SystemSlot{Designation: "DIMM2", Type: "type 0x01", Kind: "other"}, "type 0x01", "other"},
+		{protocol.SystemSlot{Designation: "M.2_2", Type: "PCIe Gen4", Kind: "expansion", Width: "x4"}, "M.2 · PCIe Gen4", "storage"},
+		{protocol.SystemSlot{Designation: "M.2 Socket 3", Type: "M.2 (M key)", Kind: "storage"}, "M.2 (M key)", "storage"},
+		{protocol.SystemSlot{Designation: "PCIEX16_1", Type: "PCIe Gen4 x16", Kind: "expansion", Width: "x16"}, "PCIe Gen4 x16", "expansion"},
+	}
+	for _, c := range cases {
+		if typ, kind := classifyM2Slot(c.in); typ != c.wantT || kind != c.wantK {
+			t.Errorf("%s: got %q/%q, want %q/%q", c.in.Designation, typ, kind, c.wantT, c.wantK)
+		}
+	}
+}

@@ -135,7 +135,6 @@
 </section>
 {{end}}
 
-<div class="grid">
 <section class="card">
   <h2>Network</h2>
   <dl>
@@ -143,11 +142,12 @@
     {{if .Gateways}}<dt>Gateway</dt><dd class="mono">{{join .Gateways ", "}}</dd>{{end}}
     {{if .DNS}}<dt>DNS</dt><dd class="mono">{{join .DNS ", "}}</dd>{{end}}
   </dl>
-  <table class="compact"><thead><tr><th>Adapter</th><th>Addresses</th><th>MAC</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Adapter</th><th>Addresses</th><th>MAC</th></tr></thead><tbody>
   {{range .Network}}<tr class="{{if not .Up}}dim{{end}}"><td>{{.Name}}{{if .Wireless}} 📶{{end}}<div class="sub">{{.Description}}</div></td>
     <td class="mono small">{{range $i, $ip := .IPs}}{{if $i}}<br>{{end}}{{$ip}}{{end}}{{if isSet .DHCP}}<div class="sub">{{if derefB .DHCP}}DHCP{{else}}static{{end}}</div>{{end}}</td><td class="mono small">{{.MAC}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
 </section>
+<div class="grid">
 {{with .PiPower}}
 <section class="card">
   <h2>Power (Raspberry Pi)</h2>
