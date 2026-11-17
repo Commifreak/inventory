@@ -236,7 +236,7 @@ func collectSystemWindows(ctx context.Context, _ *State) (any, []string, error) 
 			}
 		}
 		if cs[0].UserName != "" {
-			info.Users.CurrentUsers = []string{cs[0].UserName}
+			info.Users.CurrentUsers = []string{cs[0].UserName + " (Console)"}
 		}
 	}
 	if len(bios) > 0 {
@@ -321,7 +321,12 @@ func collectSystemWindows(ctx context.Context, _ *State) (any, []string, error) 
 		}
 	}
 
-	// Users
+	// Users: all sessions (console, RDP, disconnected) via the WTS API.
+	if sessions, err := windowsSessions(); err == nil {
+		info.Users.CurrentUsers = sessions
+	} else {
+		warn("sessions", err)
+	}
 	info.Users.LastLogons = windowsLastLogons()
 	adminGroup := sidName("S-1-5-32-544")
 	if i := strings.LastIndex(adminGroup, `\`); i >= 0 {

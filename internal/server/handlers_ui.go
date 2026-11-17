@@ -196,6 +196,9 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 	problems := r.URL.Query().Get("problems") == "1"
 	for _, d := range devices {
 		row := s.deviceRow(d, snaps[d.ID], alerts, now, checkin)
+		if latest := s.agents.Latest(d.OS, d.Arch, true); latest != "" && CompareVersions(latest, d.AgentVersion) > 0 {
+			row.AgentLatest = latest
+		}
 		counts["total"]++
 		counts[row.Online]++
 		counts[row.Overall]++

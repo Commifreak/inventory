@@ -2,7 +2,7 @@
 {{$d := .Data}}{{$dev := $d.D}}{{$csrf := .CSRF}}
 <div class="pagehead">
   <div>
-    <h1>{{template "online" $d.Row.Online}} {{$dev.Name}} {{template "status" $d.Row.Overall}}</h1>
+    <h1>{{template "online" $d.Row.Online}} {{$dev.Name}} {{template "status" $d.Row.Overall}} <a class="small rename" href="?tab=agent#settings" title="Change display name and notes">Rename</a></h1>
     <p class="sub">{{$dev.Hostname}} · {{if $dev.OSName}}{{$dev.OSName}}{{else}}{{$dev.OS}}{{end}} · {{$dev.Arch}} · last seen {{ago $dev.LastSeenAt}}{{if $dev.LastIP}} from {{$dev.LastIP}}{{end}}
     {{if not $dev.RevokedAt.IsZero}} · <span class="err-text">revoked {{fmtTime $dev.RevokedAt}}</span>{{end}}</p>
     {{if $dev.Notes}}<p class="notes">{{$dev.Notes}}</p>{{end}}
@@ -355,7 +355,7 @@
 </section>
 
 <section class="card">
-  <h2>Settings</h2>
+  <h2 id="settings">Settings</h2>
   <form method="post" action="/devices/{{$dev.ID}}/settings">
     {{template "csrf" $csrf}}
     <label>Display name <input name="display_name" value="{{$dev.DisplayName}}" placeholder="{{$dev.Hostname}}"></label>

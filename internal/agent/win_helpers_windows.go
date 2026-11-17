@@ -3,9 +3,12 @@ package agent
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -41,6 +44,11 @@ var (
 	moduser32   = windows.NewLazySystemDLL("user32.dll")
 	modcrypt32  = windows.NewLazySystemDLL("crypt32.dll")
 	modnetapi32 = windows.NewLazySystemDLL("netapi32.dll")
+	modwtsapi32 = windows.NewLazySystemDLL("wtsapi32.dll")
+
+	procWTSEnumerateSessionsW       = modwtsapi32.NewProc("WTSEnumerateSessionsW")
+	procWTSQuerySessionInformationW = modwtsapi32.NewProc("WTSQuerySessionInformationW")
+	procWTSFreeMemory               = modwtsapi32.NewProc("WTSFreeMemory")
 
 	procGetFirmwareEnvironmentVariableExW = modkernel32.NewProc("GetFirmwareEnvironmentVariableExW")
 	procGetTickCount64                    = modkernel32.NewProc("GetTickCount64")
@@ -249,4 +257,59 @@ func restrictDir(path string) error {
 	}
 	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
+}
+
+type wtsSessionInfo struct {
+	sessionID  uint32
+	winStation *uint16
+	state      uint32
+}
+
+const (
+	wtsUserName   = 5
+	wtsDomainName = 7
+)
+
+var wtsStates = map[uint32]string{0: "active", 1: "connected", 2: "connect query", 3: "shadow", 4: "disconnected", 5: "idle", 6: "listen", 7: "reset", 8: "down", 9: "init"}
+
+func wtsQueryString(session uint32, class uintptr) string {
+	var buf *uint16
+	var n uint32
+	r, _, _ := procWTSQuerySessionInformationW.Call(0, uintptr(session), class, uintptr(unsafe.Pointer(&buf)), uintptr(unsafe.Pointer(&n)))
+	if r == 0 || buf == nil {
+		return ""
+	}
+	defer procWTSFreeMemory.Call(uintptr(unsafe.Pointer(buf)))
+	return windows.UTF16PtrToString(buf)
+}
+
+// windowsSessions lists users with a session: "DOMAIN\user (Console, active)".
+func windowsSessions() ([]string, error) {
+	var info *wtsSessionInfo
+	var count uint32
+	r, _, err := procWTSEnumerateSessionsW.Call(0, 0, 1, uintptr(unsafe.Pointer(&info)), uintptr(unsafe.Pointer(&count)))
+	if r == 0 {
+		return nil, err
+	}
+	defer procWTSFreeMemory.Call(uintptr(unsafe.Pointer(info)))
+	var out []string
+	for _, s := range unsafe.Slice(info, count) {
+		user := wtsQueryString(s.sessionID, wtsUserName)
+		if user == "" {
+			continue
+		}
+		if dom := wtsQueryString(s.sessionID, wtsDomainName); dom != "" {
+			user = dom + `\` + user
+		}
+		station := windows.UTF16PtrToString(s.winStation)
+		switch {
+		case station == "Console":
+		case strings.HasPrefix(station, "RDP"):
+			station = "RDP"
+		case station == "":
+			station = "session " + strconv.Itoa(int(s.sessionID))
+		}
+		out = append(out, fmt.Sprintf("%s (%s, %s)", user, station, wtsStates[s.state]))
+	}
+	return out, nil
 }

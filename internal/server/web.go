@@ -353,6 +353,7 @@ type DeviceRow struct {
 	SearchError   string
 	Alerts        int
 	AlertSev      string
+	AgentLatest   string // newest signed agent for the platform, if newer than the installed one
 	Overall       string
 }
 
