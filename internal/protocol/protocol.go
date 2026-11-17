@@ -59,7 +59,7 @@ type CheckinRequest struct {
 	BootTime     time.Time `json:"boot_time"`
 	AgentTime    time.Time `json:"agent_time"`
 	// LastCollected maps collector name to the time of its last successful run.
-	LastCollected map[string]time.Time `json:"last_collected,omitempty"`
+	LastCollected map[string]time.Time `json:"last_collected,omitzero"`
 	// UpdateResult is set once after an update attempt.
 	UpdateResult *UpdateResult `json:"update_result,omitempty"`
 }

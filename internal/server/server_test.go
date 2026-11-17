@@ -120,7 +120,7 @@ func sampleReport(now time.Time) protocol.Report {
 		protocol.CollectUpdates: {CollectedAt: now, Data: protocol.UpdatesData{Manager: "Windows Update", PendingCount: 2, RebootRequired: true,
 			Pending: []protocol.PendingUpdate{{Title: "2026-11 Cumulative Update", KB: "KB5000001"}},
 			History: []protocol.UpdateHistoryEntry{{Title: "KB123", Date: now.Add(-time.Hour), Result: "Failed", HResult: "0x80070002"}}}},
-		protocol.CollectSoftware: {CollectedAt: now, Data: protocol.SoftwareData{Items: []protocol.SoftwareItem{{Name: "7-Zip", Version: "23.01", Source: "registry", Scope: "machine"}}}},
+		protocol.CollectSoftware:  {CollectedAt: now, Data: protocol.SoftwareData{Items: []protocol.SoftwareItem{{Name: "7-Zip", Version: "23.01", Source: "registry", Scope: "machine"}}}},
 		protocol.CollectAutostart: {CollectedAt: now, Data: protocol.AutostartData{Items: []protocol.AutostartItem{{Name: "OneDrive", Command: "onedrive.exe /background", Location: `HKCU\Run`, Enabled: true}}}},
 		protocol.CollectEvents: {CollectedAt: now, Data: protocol.EventsData{Since: now.Add(-24 * time.Hour), Events: []protocol.CriticalEvent{
 			{Kind: protocol.EventBluescreen, Time: now.Add(-2 * time.Hour), Source: "BugCheck", EventID: 1001, Message: "The computer has rebooted from a bugcheck.", Key: "rec1"},

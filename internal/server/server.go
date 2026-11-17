@@ -184,6 +184,17 @@ func (s *Server) ensureToken(ctx context.Context) error {
 	return err
 }
 
+// FirstActiveToken returns an active enrollment token (used by tests and tooling).
+func (s *Server) FirstActiveToken(ctx context.Context) string {
+	toks, _ := s.store.ListTokens(ctx)
+	for _, t := range toks {
+		if t.Active() {
+			return t.Token
+		}
+	}
+	return ""
+}
+
 // baseURL returns the public URL of the server: BASE_URL or derived from the request.
 func (s *Server) baseURL(r *http.Request) string {
 	if s.cfg.BaseURL != "" {

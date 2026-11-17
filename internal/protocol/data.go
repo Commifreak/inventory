@@ -32,7 +32,7 @@ type OSInfo struct {
 	Codename       string    `json:"codename,omitempty"`
 	Kernel         string    `json:"kernel,omitempty"`
 	Arch           string    `json:"arch"`
-	InstallDate    time.Time `json:"install_date,omitempty"`
+	InstallDate    time.Time `json:"install_date,omitzero"`
 	BootTime       time.Time `json:"boot_time"`
 	Timezone       string    `json:"timezone,omitempty"`
 }
@@ -116,10 +116,10 @@ type DefenderInfo struct {
 	AntivirusEnabled   bool      `json:"antivirus_enabled"`
 	RealTimeProtection bool      `json:"real_time_protection"`
 	RunningMode        string    `json:"running_mode,omitempty"` // "Normal", "Passive", "EDR Block", "SxS Passive"
-	SignatureUpdated   time.Time `json:"signature_updated,omitempty"`
+	SignatureUpdated   time.Time `json:"signature_updated,omitzero"`
 	SignatureAgeDays   int       `json:"signature_age_days"`
 	SignatureVersion   string    `json:"signature_version,omitempty"`
-	LastQuickScan      time.Time `json:"last_quick_scan,omitempty"`
+	LastQuickScan      time.Time `json:"last_quick_scan,omitzero"`
 	TamperProtection   *bool     `json:"tamper_protection,omitempty"`
 }
 
@@ -211,8 +211,8 @@ type UpdatesData struct {
 	SecurityCount   int                  `json:"security_count"`
 	RebootRequired  bool                 `json:"reboot_required"`
 	RebootReasons   []string             `json:"reboot_reasons,omitempty"`
-	LastSearch      time.Time            `json:"last_search,omitempty"`
-	LastInstall     time.Time            `json:"last_install,omitempty"`
+	LastSearch      time.Time            `json:"last_search,omitzero"`
+	LastInstall     time.Time            `json:"last_install,omitzero"`
 	AutoUpdates     *bool                `json:"auto_updates,omitempty"`
 	AutoUpdatesInfo string               `json:"auto_updates_info,omitempty"`
 	Source          string               `json:"source,omitempty"` // "Windows Update", "WSUS: http://..."
@@ -228,7 +228,7 @@ type PendingUpdate struct {
 	Category string    `json:"category,omitempty"`
 	Severity string    `json:"severity,omitempty"`
 	Security bool      `json:"security,omitempty"`
-	Released time.Time `json:"released,omitempty"`
+	Released time.Time `json:"released,omitzero"`
 	Size     uint64    `json:"size,omitempty"`
 }
 
