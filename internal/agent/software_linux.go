@@ -283,7 +283,9 @@ func collectEventsLinux(ctx context.Context, st *State) (any, []string, error) {
 			filtered = append(filtered, r)
 		}
 	}
-	return protocol.EventsData{Since: since, Events: parseKernelRecords(filtered)}, warns, nil
+	events := parseKernelRecords(filtered)
+	markExternalLinux(events, lsblk(ctx))
+	return protocol.EventsData{Since: since, Events: events}, warns, nil
 }
 
 // dmesgRecords reads the kernel ring buffer of the current boot.
@@ -467,4 +469,31 @@ func journalString(v any) string {
 		return string(b)
 	}
 	return ""
+}
+
+// markExternalLinux flags disk errors of USB disks (except the system disk).
+func markExternalLinux(events []protocol.CriticalEvent, blk []lsblkDev) {
+	type info struct{ usb, system bool }
+	byName := map[string]*info{}
+	disks := map[string]*info{}
+	walkBlk(blk, func(n, disk lsblkDev, _ bool) {
+		in, ok := disks[disk.Name]
+		if !ok {
+			in = &info{usb: disk.Tran == "usb"}
+			disks[disk.Name] = in
+		}
+		if n.Mountpoint == "/" {
+			in.system = true
+		}
+		byName[n.Name] = in
+	})
+	for i := range events {
+		e := &events[i]
+		if e.Kind != protocol.EventDiskError {
+			continue
+		}
+		if in, ok := byName[e.Device]; ok && in.usb && !in.system {
+			e.External = true
+		}
+	}
 }

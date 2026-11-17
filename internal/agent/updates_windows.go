@@ -272,17 +272,25 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 				}
 				if cats, err := getProp(up, "Categories"); err == nil {
 					var names []string
-					forEach(cats.ToIDispatch(), func(c *ole.IDispatch) { names = append(names, propString(c, "Name")) })
+					forEach(cats.ToIDispatch(), func(c *ole.IDispatch) {
+						names = append(names, propString(c, "Name"))
+						// Classification IDs are language independent.
+						switch strings.ToLower(propString(c, "CategoryID")) {
+						case catSecurityUpdates, catCriticalUpdates:
+							p.Security = true
+						case catDefinitionUpdates:
+							p.Optional = true
+						}
+					})
 					cats.Clear()
 					p.Category = strings.Join(names, ", ")
-					for _, n := range names {
-						if n == "Security Updates" || n == "Critical Updates" {
-							p.Security = true
-						}
-					}
 				}
 				if p.Severity == "Critical" || p.Severity == "Important" {
 					p.Security = true
+				}
+				// BrowseOnly: optional update (e.g. optional drivers), offered but never installed automatically.
+				if propBool(up, "BrowseOnly") {
+					p.Optional = true
 				}
 				u.Pending = append(u.Pending, p)
 			})
@@ -290,8 +298,11 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 		}
 		res.Release()
 	}
-	u.PendingCount = len(u.Pending)
 	for _, p := range u.Pending {
+		if p.Optional {
+			continue
+		}
+		u.PendingCount++
 		if p.Security {
 			u.SecurityCount++
 		}
@@ -307,6 +318,7 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 		} else {
 			results := map[int64]string{0: "NotStarted", 1: "InProgress", 2: "Succeeded", 3: "SucceededWithErrors", 4: "Failed", 5: "Aborted"}
 			seenIntel := false
+			seenHist := map[string]bool{}
 			forEach(hv.ToIDispatch(), func(e *ole.IDispatch) {
 				title := propString(e, "Title")
 				if title == "" {
@@ -329,6 +341,12 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 				case 2:
 					h.Operation = "Uninstallation"
 				}
+				// Store app updates are logged several times with the same title and time.
+				hk := h.Title + "|" + h.Date.Truncate(time.Minute).String() + "|" + h.Result
+				if seenHist[hk] {
+					return
+				}
+				seenHist[hk] = true
 				u.History = append(u.History, h)
 			})
 			hv.Clear()
@@ -376,3 +394,10 @@ func propIntCall(d *ole.IDispatch, method string) int64 {
 	}
 	return 0
 }
+
+// Windows Update classification IDs.
+const (
+	catSecurityUpdates   = "0fa1201d-4330-4fa8-8ae9-b877473b6441"
+	catCriticalUpdates   = "e6cf1350-c01b-414d-a61f-263d14d133b4"
+	catDefinitionUpdates = "e0789628-ce08-4437-be74-2495b842f43b"
+)

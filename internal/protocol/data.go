@@ -243,12 +243,16 @@ type UpdatesData struct {
 }
 
 type PendingUpdate struct {
-	Title    string    `json:"title"`
-	KB       string    `json:"kb,omitempty"`
-	Version  string    `json:"version,omitempty"`
-	Category string    `json:"category,omitempty"`
-	Severity string    `json:"severity,omitempty"`
-	Security bool      `json:"security,omitempty"`
+	Title    string `json:"title"`
+	KB       string `json:"kb,omitempty"`
+	Version  string `json:"version,omitempty"`
+	Category string `json:"category,omitempty"`
+	Severity string `json:"severity,omitempty"`
+	Security bool   `json:"security,omitempty"`
+	// Optional updates (optional drivers, Defender definitions) are listed
+	// but not counted as pending: Windows installs definitions on its own and
+	// never installs optional updates automatically.
+	Optional bool      `json:"optional,omitempty"`
 	Released time.Time `json:"released,omitzero"`
 	Size     uint64    `json:"size,omitempty"`
 }
@@ -332,7 +336,9 @@ type CriticalEvent struct {
 	Source  string    `json:"source,omitempty"` // provider / kernel subsystem
 	EventID int       `json:"event_id,omitempty"`
 	Device  string    `json:"device,omitempty"`
-	Message string    `json:"message"`
+	// External is set for errors on USB/removable disks (never the system disk).
+	External bool   `json:"external,omitempty"`
+	Message  string `json:"message"`
 	// Key deduplicates events across overlapping scans.
 	Key string `json:"key"`
 }

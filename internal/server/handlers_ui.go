@@ -700,6 +700,7 @@ func (w *webUI) handleAlertSettingsSave(rw http.ResponseWriter, r *http.Request)
 			rc.Severity = sev
 		}
 		rc.SystemDiskOnly = def.DiskScope && r.PostFormValue("sys_"+def.ID) == "1"
+		rc.IncludeExternal = def.ExternalOption && r.PostFormValue("ext_"+def.ID) == "1"
 		rc.Recipients = splitList(r.PostFormValue("rcpt_" + def.ID))
 		for _, p := range def.Params {
 			v, err := strconv.ParseFloat(strings.ReplaceAll(r.PostFormValue("p_"+def.ID+"_"+p.Key), ",", "."), 64)

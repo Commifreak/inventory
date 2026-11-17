@@ -25,6 +25,7 @@
       <td><b>{{.Title}}</b><div class="sub">{{.Description}}</div></td>
       <td class="nowrap">
         {{range .Params}}<label class="inline">{{.Label}} <input name="p_{{$id}}_{{.Key}}" class="tiny" inputmode="decimal" value="{{fnum (index $rc.Params .Key)}}"> {{.Unit}}</label><br>{{end}}
+        {{if .ExternalOption}}<label class="check small"><input type="checkbox" name="ext_{{.ID}}" value="1" {{if $rc.IncludeExternal}}checked{{end}}> include USB/removable disks</label>{{end}}
         {{if .DiskScope}}<label class="check small"><input type="checkbox" name="sys_{{.ID}}" value="1" {{if $rc.SystemDiskOnly}}checked{{end}}> system disk only</label>{{end}}
       </td>
       <td><select name="sev_{{.ID}}"><option value="warning" {{if eq $rc.Severity "warning"}}selected{{end}}>warning</option><option value="critical" {{if eq $rc.Severity "critical"}}selected{{end}}>critical</option></select></td>

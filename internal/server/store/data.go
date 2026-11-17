@@ -236,14 +236,15 @@ type Event struct {
 	Source     string
 	EventID    int
 	Disk       string
+	External   bool
 	Message    string
 	ReceivedAt time.Time
 }
 
 // AddEvent inserts an event; returns true if it was new.
 func (s *Store) AddEvent(ctx context.Context, tx *sql.Tx, e Event) (bool, error) {
-	res, err := tx.ExecContext(ctx, `INSERT INTO events(device_id, key, kind, ts, source, event_id, disk, message, received_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
-		e.DeviceID, e.Key, e.Kind, e.Time.Unix(), nullStr(e.Source), e.EventID, nullStr(e.Disk), e.Message, e.ReceivedAt.Unix())
+	res, err := tx.ExecContext(ctx, `INSERT INTO events(device_id, key, kind, ts, source, event_id, disk, external, message, received_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
+		e.DeviceID, e.Key, e.Kind, e.Time.Unix(), nullStr(e.Source), e.EventID, nullStr(e.Disk), e.External, e.Message, e.ReceivedAt.Unix())
 	if err != nil {
 		return false, err
 	}
@@ -252,7 +253,7 @@ func (s *Store) AddEvent(ctx context.Context, tx *sql.Tx, e Event) (bool, error)
 }
 
 func (s *Store) Events(ctx context.Context, deviceID string, since time.Time, limit int) ([]Event, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT device_id, key, kind, ts, COALESCE(source,''), COALESCE(event_id,0), COALESCE(disk,''), COALESCE(message,''), received_at
+	rows, err := s.DB.QueryContext(ctx, `SELECT device_id, key, kind, ts, COALESCE(source,''), COALESCE(event_id,0), COALESCE(disk,''), external, COALESCE(message,''), received_at
 FROM events WHERE device_id=? AND ts>=? ORDER BY ts DESC LIMIT ?`, deviceID, since.Unix(), limit)
 	if err != nil {
 		return nil, err
@@ -262,7 +263,7 @@ FROM events WHERE device_id=? AND ts>=? ORDER BY ts DESC LIMIT ?`, deviceID, sin
 	for rows.Next() {
 		var e Event
 		var ts, rec int64
-		if err := rows.Scan(&e.DeviceID, &e.Key, &e.Kind, &ts, &e.Source, &e.EventID, &e.Disk, &e.Message, &rec); err != nil {
+		if err := rows.Scan(&e.DeviceID, &e.Key, &e.Kind, &ts, &e.Source, &e.EventID, &e.Disk, &e.External, &e.Message, &rec); err != nil {
 			return nil, err
 		}
 		e.Time, e.ReceivedAt = time.Unix(ts, 0), time.Unix(rec, 0)
@@ -271,10 +272,11 @@ FROM events WHERE device_id=? AND ts>=? ORDER BY ts DESC LIMIT ?`, deviceID, sin
 	return out, rows.Err()
 }
 
-// CountEvents counts events of a kind since t, per device.
-func (s *Store) CountEvents(ctx context.Context, deviceID, kind string, since time.Time) (int, error) {
+// CountEvents counts events of a kind since t, per device. Events on
+// external disks are only counted when includeExternal is set.
+func (s *Store) CountEvents(ctx context.Context, deviceID, kind string, since time.Time, includeExternal bool) (int, error) {
 	var n int
-	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE device_id=? AND kind=? AND ts>=?`, deviceID, kind, since.Unix()).Scan(&n)
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE device_id=? AND kind=? AND ts>=? AND (external=0 OR ?)`, deviceID, kind, since.Unix(), includeExternal).Scan(&n)
 	return n, err
 }
 

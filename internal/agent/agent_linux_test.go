@@ -286,3 +286,23 @@ func TestUndervoltage(t *testing.T) {
 		t.Fatalf("hwmon: %+v", p)
 	}
 }
+
+func TestMarkExternalLinux(t *testing.T) {
+	blk := []lsblkDev{
+		{Name: "mmcblk0", Path: "/dev/mmcblk0", Type: "disk", Children: []lsblkDev{{Name: "mmcblk0p2", Type: "part", Mountpoint: "/"}}},
+		{Name: "sda", Path: "/dev/sda", Type: "disk", Tran: "usb", Children: []lsblkDev{{Name: "sda1", Type: "part", Mountpoint: "/mnt/usb"}}},
+	}
+	evs := []protocol.CriticalEvent{{Kind: protocol.EventDiskError, Device: "sda1"}, {Kind: protocol.EventDiskError, Device: "mmcblk0p2"}, {Kind: protocol.EventDiskError, Device: "sda"}}
+	markExternalLinux(evs, blk)
+	if !evs[0].External || evs[1].External || !evs[2].External {
+		t.Fatalf("unexpected %+v", evs)
+	}
+	// A system disk on USB (Pi booting from a USB SSD) is never external.
+	blk[1].Children[0].Mountpoint = "/"
+	blk[0].Children[0].Mountpoint = "/boot"
+	evs = []protocol.CriticalEvent{{Kind: protocol.EventDiskError, Device: "sda1"}}
+	markExternalLinux(evs, blk)
+	if evs[0].External {
+		t.Fatal("USB system disk marked external")
+	}
+}

@@ -126,6 +126,7 @@ func sampleReport(now time.Time) protocol.Report {
 		protocol.CollectEvents: {CollectedAt: now, Data: protocol.EventsData{Since: now.Add(-24 * time.Hour), Events: []protocol.CriticalEvent{
 			{Kind: protocol.EventBluescreen, Time: now.Add(-2 * time.Hour), Source: "BugCheck", EventID: 1001, Message: "The computer has rebooted from a bugcheck.", Key: "rec1"},
 			{Kind: protocol.EventUndervoltage, Time: now.Add(-3 * time.Hour), Source: "kernel", Message: "hwmon hwmon1: Undervoltage detected!", Key: "uv1"},
+			{Kind: protocol.EventDiskError, Time: now.Add(-1 * time.Hour), Source: "disk", EventID: 153, Device: "Disk 1 (not connected)", External: true, Message: "retried", Key: "ext1"},
 		}}},
 	}}
 }
@@ -243,6 +244,9 @@ func TestEndToEnd(t *testing.T) {
 		if !rules[want] {
 			t.Errorf("expected alert %s, open: %v", want, rules)
 		}
+	}
+	if rules["disk_errors"] {
+		t.Errorf("disk error on an external disk raised an alert")
 	}
 	if len(fm.sent) != 1 {
 		t.Fatalf("expected one mail, got %v", fm.sent)

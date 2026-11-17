@@ -36,6 +36,7 @@ type RuleDef struct {
 	DefaultSeverity       string
 	Params                []ParamDef
 	DiskScope             bool // offers "system disk only"
+	ExternalOption        bool // offers "include USB/removable disks"
 	DefaultSystemDiskOnly bool
 }
 
@@ -89,7 +90,7 @@ var RuleCatalog = []RuleDef{
 
 	{ID: "bluescreen", Group: "Events", Title: "Bluescreen", Description: "The system crashed (bug check) within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
-	{ID: "disk_errors", Group: "Events", Title: "Disk errors in system log", Description: "I/O, SD card/eMMC or file system errors logged within the given time.",
+	{ID: "disk_errors", Group: "Events", ExternalOption: true, Title: "Disk errors in system log", Description: "I/O, SD card/eMMC or file system errors logged within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}, {"min", "At least", "events", 1}}},
 	{ID: "undervoltage", Group: "Events", Title: "Undervoltage (Raspberry Pi)", Description: "The power supply voltage dropped too low within the given time, or is too low right now. Undervoltage corrupts SD cards.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
@@ -382,7 +383,7 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 			continue
 		}
 		hours := p(rc, "hours")
-		n, err := s.store.CountEvents(ctx, d.ID, it.kind, now.Add(-time.Duration(hours*float64(time.Hour))))
+		n, err := s.store.CountEvents(ctx, d.ID, it.kind, now.Add(-time.Duration(hours*float64(time.Hour))), rc.IncludeExternal)
 		if err != nil {
 			continue
 		}

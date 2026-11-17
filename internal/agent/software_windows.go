@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	ole "github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
+	"github.com/yusufpapurcu/wmi"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc/mgr"
 
@@ -354,5 +357,43 @@ func collectEventsWindows(ctx context.Context, st *State) (any, []string, error)
 	if err != nil {
 		return nil, nil, err
 	}
+	classifyWindowsEventDisks(events)
 	return protocol.EventsData{Since: since, Events: events}, nil, nil
+}
+
+var harddiskRe = regexp.MustCompile(`(?i)\\Device\\Harddisk(\d+)\\`)
+
+// classifyWindowsEventDisks replaces \Device\HarddiskN\DRx with a readable
+// name and flags events of USB/removable disks. A disk that is no longer
+// connected is treated as removable; the system disk never is.
+func classifyWindowsEventDisks(events []protocol.CriticalEvent) {
+	var pdisks []msftPhysicalDisk
+	_ = wmi.QueryNamespace("SELECT DeviceId, FriendlyName, BusType FROM MSFT_PhysicalDisk", &pdisks, storageNS)
+	byNumber := map[int]msftPhysicalDisk{}
+	for _, p := range pdisks {
+		if n, err := strconv.Atoi(p.DeviceId); err == nil {
+			byNumber[n] = p
+		}
+	}
+	sysDisk, sysKnown := systemDiskNumber()
+	for i := range events {
+		e := &events[i]
+		m := harddiskRe.FindStringSubmatch(e.Device + `\`)
+		if m == nil {
+			continue
+		}
+		n, _ := strconv.Atoi(m[1])
+		p, present := byNumber[n]
+		switch {
+		case sysKnown && n == sysDisk:
+			e.Device = fmt.Sprintf("Disk %d (system) %s", n, strings.TrimSpace(p.FriendlyName))
+		case !present:
+			e.Device = fmt.Sprintf("Disk %d (not connected)", n)
+			e.External = true
+		default:
+			bus := busNames[p.BusType]
+			e.Device = strings.TrimSpace(fmt.Sprintf("Disk %d %s (%s)", n, strings.TrimSpace(p.FriendlyName), bus))
+			e.External = p.BusType == 7 || p.BusType == 12 || p.BusType == 13
+		}
+	}
 }

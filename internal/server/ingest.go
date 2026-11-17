@@ -111,7 +111,7 @@ func (s *Server) derive(ctx context.Context, tx *sql.Tx, d *store.Device, name s
 				e.Key = fmt.Sprintf("%s|%d|%s", e.Kind, e.Time.Unix(), truncate(e.Message, 64))
 			}
 			if _, err := s.store.AddEvent(ctx, tx, store.Event{DeviceID: d.ID, Key: truncate(e.Key, 200), Kind: e.Kind, Time: e.Time,
-				Source: e.Source, EventID: e.EventID, Disk: e.Device, Message: truncate(e.Message, 4000), ReceivedAt: now}); err != nil {
+				Source: e.Source, EventID: e.EventID, Disk: e.Device, External: e.External, Message: truncate(e.Message, 4000), ReceivedAt: now}); err != nil {
 				return nil, err
 			}
 		}

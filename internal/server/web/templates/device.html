@@ -239,7 +239,7 @@
   {{if .Pending}}
   <div class="tablewrap"><table class="compact">
     <thead><tr><th>Update</th><th>Category</th><th>Version / KB</th><th>Released</th></tr></thead>
-    <tbody>{{range .Pending}}<tr><td>{{.Title}}{{if .Security}} <span class="badge st-warning">security</span>{{end}}{{if .Severity}} <span class="sub">{{.Severity}}</span>{{end}}</td><td>{{.Category}}</td><td class="mono small">{{.Version}}{{.KB}}</td><td>{{fmtDate .Released}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .Pending}}<tr><td>{{.Title}}{{if .Security}} <span class="badge st-warning">security</span>{{end}}{{if .Optional}} <span class="badge" title="Not counted as pending: optional updates are never installed automatically, definitions are installed by Windows on its own">optional</span>{{end}}{{if .Severity}} <span class="sub">{{.Severity}}</span>{{end}}</td><td>{{.Category}}</td><td class="mono small">{{.Version}}{{.KB}}</td><td>{{fmtDate .Released}}</td></tr>{{end}}</tbody>
   </table></div>
   {{else}}<p class="muted">No pending updates.</p>{{end}}
 </section>
@@ -308,7 +308,7 @@
     <thead><tr><th>Time</th><th>Kind</th><th>Source</th><th>Message</th></tr></thead>
     <tbody>{{range $d.Events}}<tr><td class="nowrap">{{fmtTime .Time}}</td>
       <td>{{if eq .Kind "bluescreen"}}<span class="badge st-critical">bluescreen</span>{{else if eq .Kind "disk_error"}}<span class="badge st-warning">disk error</span>{{else if eq .Kind "oom"}}<span class="badge st-warning">out of memory</span>{{else if eq .Kind "undervoltage"}}<span class="badge st-warning">undervoltage</span>{{else}}{{.Kind}}{{end}}</td>
-      <td class="sub">{{.Source}}{{if .EventID}} · {{.EventID}}{{end}}{{if .Disk}} · {{.Disk}}{{end}}</td><td class="small break">{{.Message}}</td></tr>{{end}}</tbody>
+      <td class="sub">{{.Source}}{{if .EventID}} · {{.EventID}}{{end}}{{if .Disk}} · {{.Disk}}{{end}}{{if .External}} <span class="badge" title="USB or removable disk - not counted by the default alert rule">external</span>{{end}}</td><td class="small break">{{.Message}}</td></tr>{{end}}</tbody>
   </table></div>
   {{else}}<p class="muted">No bluescreens, disk errors, undervoltage or out-of-memory events recorded.</p>{{end}}
 </section>

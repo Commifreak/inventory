@@ -64,7 +64,9 @@ type RuleConfig struct {
 	Severity       string             `json:"severity"`
 	Params         map[string]float64 `json:"params,omitempty"`
 	SystemDiskOnly bool               `json:"system_disk_only,omitempty"`
-	Recipients     []string           `json:"recipients,omitempty"` // overrides the global list
+	// IncludeExternal also counts events of USB/removable disks.
+	IncludeExternal bool     `json:"include_external,omitempty"`
+	Recipients      []string `json:"recipients,omitempty"` // overrides the global list
 }
 
 // GeneralSettings are miscellaneous options.
