@@ -288,8 +288,10 @@ func windowsUpdateCOM() (protocol.UpdatesData, []string, error) {
 				if p.Severity == "Critical" || p.Severity == "Important" {
 					p.Security = true
 				}
-				// BrowseOnly: optional update (e.g. optional drivers), offered but never installed automatically.
-				if propBool(up, "BrowseOnly") {
+				// Windows installs only updates marked AutoSelectOnWebSites on its own;
+				// the rest (typically drivers) appears under "Optional updates".
+				// BrowseOnly updates are optional as well. Security updates always count.
+				if (propBool(up, "BrowseOnly") || !propBool(up, "AutoSelectOnWebSites")) && !p.Security {
 					p.Optional = true
 				}
 				u.Pending = append(u.Pending, p)
