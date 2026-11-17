@@ -30,3 +30,9 @@
 - Remote support: not built into the agent (read-only principle, attack surface);
   possible later: show the RustDesk/MeshCentral ID of a client with a connect link
 - RAID controller details via vendor tools (storcli etc.)
+
+## Decided against
+
+- Android agent: no silent installation or self-updates without the Play Store or
+  device management, limited data without root (no SMART, logs or serial numbers).
+- "Feature update available" hint on Windows clients.
