@@ -136,6 +136,10 @@ type securityCenterAV struct {
 func windowsAntivirus() ([]protocol.AntivirusProduct, error) {
 	var avs []securityCenterAV
 	if err := wmi.QueryNamespace("SELECT DisplayName, ProductState, PathToSignedProductExe FROM AntiVirusProduct", &avs, `root\SecurityCenter2`); err != nil {
+		// Windows Server has no Security Center (WBEM_E_INVALID_NAMESPACE).
+		if strings.Contains(strings.ToLower(err.Error()), "8004100e") || strings.Contains(strings.ToLower(err.Error()), "invalid namespace") {
+			return nil, nil
+		}
 		return nil, err
 	}
 	var out []protocol.AntivirusProduct
