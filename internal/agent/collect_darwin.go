@@ -30,7 +30,6 @@ func platformCollectors() map[string]Collector {
 	}
 }
 
-
 func ioregValue(out, key string) string {
 	re := regexp.MustCompile(`"` + regexp.QuoteMeta(key) + `" = "?([^"\n]*)"?`)
 	if m := re.FindStringSubmatch(out); m != nil {

@@ -140,6 +140,20 @@ func (r *AgentRepo) Reload() error {
 	return nil
 }
 
+// Prune removes old versions: the newest keepNewest versions and all
+// versions for which inUse returns true are kept.
+func (r *AgentRepo) Prune(keepNewest int, inUse func(string) bool, log *slog.Logger) {
+	for i, m := range r.Versions() {
+		if i < keepNewest || inUse(m.Version) {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(r.dir, m.Version)); err == nil {
+			log.Info("removed old agent version", "version", m.Version)
+		}
+	}
+	_ = r.Reload()
+}
+
 // Versions returns all versions, newest first.
 func (r *AgentRepo) Versions() []*release.Manifest {
 	r.mu.RLock()

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 
 	"github.com/commifreak/inventory/internal/tag"
@@ -20,6 +21,7 @@ import (
 // PlatformMain handles the Windows service entry point and the double-click
 // installer experience.
 func PlatformMain(args []string) (bool, int) {
+	attachParentConsole()
 	if isSvc, err := svc.IsWindowsService(); err == nil && isSvc {
 		return true, runService()
 	}
@@ -200,4 +202,21 @@ func (l *rotatingLog) Write(p []byte) (int, error) {
 	n, err := l.f.Write(p)
 	l.size += int64(n)
 	return n, err
+}
+
+// attachParentConsole makes CLI output visible: the agent is built as a GUI
+// application (no console window on double-click), so it has no console of
+// its own when started from cmd/PowerShell. Redirected output (pipes) keeps working.
+func attachParentConsole() {
+	if h, err := windows.GetStdHandle(windows.STD_OUTPUT_HANDLE); err == nil && h != 0 && h != windows.InvalidHandle {
+		return
+	}
+	const attachParentProcess = ^uint32(0) // (DWORD)-1
+	r, _, _ := procAttachConsole.Call(uintptr(attachParentProcess))
+	if r == 0 {
+		return
+	}
+	if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+		os.Stdout, os.Stderr = f, f
+	}
 }

@@ -78,6 +78,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	if err := s.ensureToken(context.Background()); err != nil {
 		return nil, err
 	}
+	s.pruneAgents(context.Background())
 	return s, nil
 }
 
@@ -169,6 +170,22 @@ func (s *Server) maintenanceLoop(ctx context.Context) {
 		case <-t.C:
 		}
 	}
+}
+
+// pruneAgents keeps the newest agent versions plus every version in use.
+func (s *Server) pruneAgents(ctx context.Context) {
+	used := map[string]bool{}
+	devices, err := s.store.ListDevices(ctx)
+	if err != nil {
+		return
+	}
+	for _, d := range devices {
+		used[d.AgentVersion], used[d.PinnedVersion], used[d.UpdateNowVersion] = true, true, true
+	}
+	for _, v := range s.updatePolicy(ctx).RingVersions {
+		used[v] = true
+	}
+	s.agents.Prune(5, func(v string) bool { return used[v] }, s.log)
 }
 
 // ensureToken creates a default enrollment token on first start.

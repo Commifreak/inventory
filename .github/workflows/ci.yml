@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: vet
+        run: |
+          go vet ./...
+          for p in windows/amd64 windows/arm64 linux/arm64 darwin/arm64; do
+            GOOS=${p%/*} GOARCH=${p#*/} go vet ./internal/agent/ ./cmd/inventory-agent/
+          done
+      - name: test
+        run: go test -race ./...
+      - name: build agents (unsigned)
+        run: SMARTCTL_SKIP=1 ./scripts/build-agents.sh
+
+  windows:
+    # Runs the real collectors on a Windows VM as a smoke test.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: test
+        run: go test ./internal/agent/ ./internal/tag/ ./internal/release/
+      - name: collect
+        shell: pwsh
+        run: |
+          go build -o inventory-agent.exe ./cmd/inventory-agent
+          ./inventory-agent.exe collect > collect.json
+          $r = Get-Content collect.json | ConvertFrom-Json
+          foreach ($s in $r.sections.PSObject.Properties) {
+            "{0,-10} {1,6} ms  error: {2}  warnings: {3}" -f $s.Name, $s.Value.duration_ms, $s.Value.error, ($s.Value.warnings -join '; ')
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-collect
+          path: collect.json

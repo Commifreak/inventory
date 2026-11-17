@@ -89,7 +89,7 @@
           <div class="sub">Mode: {{.RunningMode}} · real-time {{if .RealTimeProtection}}on{{else}}off{{end}} · signatures {{.SignatureAgeDays}} day(s) old{{if isSet .TamperProtection}} · tamper protection {{if derefB .TamperProtection}}on{{else}}off{{end}}{{end}}</div>{{end}}</dd>
       {{end}}
       {{with .Security.Activation}}<dt>Activation</dt><dd>{{if .Licensed}}<span class="badge st-ok">licensed</span>{{else}}<span class="badge st-warning">{{.Status}}</span>{{end}}{{if .Channel}} <span class="sub">{{.Channel}}</span>{{end}}</dd>{{end}}
-      {{range .Volumes}}{{if .Encryption}}<dt>Encryption {{.Mount}}</dt><dd>{{.Encryption}}</dd>{{end}}{{end}}
+      {{range .Volumes}}{{if .Encryption}}<dt>Encryption ({{.Mount}})</dt><dd>{{.Encryption}}</dd>{{end}}{{end}}
     </dl>
   </section>
   <section class="card">

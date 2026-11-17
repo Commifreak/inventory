@@ -44,6 +44,7 @@ var (
 
 	procGetFirmwareEnvironmentVariableExW = modkernel32.NewProc("GetFirmwareEnvironmentVariableExW")
 	procGetTickCount64                    = modkernel32.NewProc("GetTickCount64")
+	procAttachConsole                     = modkernel32.NewProc("AttachConsole")
 	procMessageBoxW                       = moduser32.NewProc("MessageBoxW")
 	procCryptProtectData                  = modcrypt32.NewProc("CryptProtectData")
 	procCryptUnprotectData                = modcrypt32.NewProc("CryptUnprotectData")
