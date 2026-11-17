@@ -106,6 +106,9 @@ type SecureBootInfo struct {
 	DBHasWindowsUEFICA2023   *bool `json:"db_windows_uefi_ca_2023,omitempty"`
 	DBHasMicrosoftUEFICA2023 *bool `json:"db_microsoft_uefi_ca_2023,omitempty"`
 	DBHasOptionROMCA2023     *bool `json:"db_option_rom_ca_2023,omitempty"`
+	// The 2011 third-party CA. Windows only adds the third-party 2023 CAs
+	// (Microsoft UEFI CA 2023, Option ROM CA 2023) when this one is trusted.
+	DBHasMicrosoftUEFICA2011 *bool `json:"db_microsoft_uefi_ca_2011,omitempty"`
 	KEKHas2023               *bool `json:"kek_2023,omitempty"`
 	// Windows servicing status (UEFICA2023Status), e.g. "Updated", "InProgress", "NotStarted".
 	ServicingStatus string `json:"servicing_status,omitempty"`

@@ -52,7 +52,14 @@ func newWebUI(s *Server) (*webUI, error) {
 			return strings.ToUpper(s[:1]) + s[1:]
 		},
 		"json": func(v any) string { b, _ := json.MarshalIndent(v, "", "  "); return string(b) },
-		"add":  func(a, b int) int { return a + b },
+		"prettyJSON": func(raw json.RawMessage) string {
+			var buf bytes.Buffer
+			if len(raw) == 0 || json.Indent(&buf, raw, "", "  ") != nil {
+				return string(raw)
+			}
+			return buf.String()
+		},
+		"add": func(a, b int) int { return a + b },
 		"div": func(a, b int) int {
 			if b == 0 {
 				return 0

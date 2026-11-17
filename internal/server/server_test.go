@@ -107,7 +107,8 @@ func sampleReport(now time.Time) protocol.Report {
 			Network:  []protocol.NetAdapter{{Name: "Ethernet", IPs: []string{"192.168.1.10/24", "fe80::1/64"}, Up: true, DHCP: ptr(true)}},
 			Users:    protocol.UsersInfo{CurrentUsers: []string{"PC\\anna"}, Admins: []string{"PC\\Administrator", "PC\\anna"}, LastLogons: []protocol.UserLogon{{User: "anna", Time: now}}},
 			Security: protocol.SecurityInfo{
-				SecureBoot: &protocol.SecureBootInfo{Supported: true, Enabled: true, DBHasWindowsUEFICA2023: ptr(false), ServicingStatus: "NotStarted"},
+				SecureBoot: &protocol.SecureBootInfo{Supported: true, Enabled: true, DBHasWindowsUEFICA2023: ptr(false), ServicingStatus: "NotStarted",
+					DBHasMicrosoftUEFICA2023: ptr(false), DBHasMicrosoftUEFICA2011: ptr(false)},
 				Defender:   &protocol.DefenderInfo{Present: true, ServiceEnabled: true, AntivirusEnabled: true, RealTimeProtection: false, RunningMode: "Normal", SignatureAgeDays: 1},
 				Activation: &protocol.ActivationInfo{Licensed: true, Status: "Licensed"},
 			},
@@ -279,7 +280,13 @@ func TestEndToEnd(t *testing.T) {
 	if !strings.Contains(page, "PC-ANNA") {
 		t.Fatalf("dashboard does not list device")
 	}
-	for _, tab := range []string{"overview", "disks", "updates", "software", "autostart", "events", "alerts", "agent"} {
+	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=overview"); !strings.Contains(p, "not applicable") {
+		t.Errorf("third-party CA shown as missing although not applicable")
+	}
+	if raw := get(t, c, ts.URL+"/devices/"+er.DeviceID+"/raw.json"); !strings.Contains(raw, `"sections"`) || !strings.Contains(raw, "Samsung SSD 870") {
+		t.Errorf("raw export incomplete")
+	}
+	for _, tab := range []string{"overview", "disks", "updates", "software", "autostart", "events", "alerts", "agent", "raw"} {
 		p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab="+tab)
 		if !strings.Contains(p, "PC-ANNA") {
 			t.Errorf("tab %s does not render device", tab)

@@ -2,6 +2,8 @@
 
 {{define "status"}}<span class="badge st-{{.}}">{{if eq . "ok"}}OK{{else if eq . "warning"}}Warning{{else if eq . "critical"}}Critical{{else}}Unknown{{end}}</span>{{end}}
 
+{{define "thirdparty"}}{{if .Has}}<span class="badge st-ok">yes</span>{{else if .Needed}}<span class="badge st-warning">no</span>{{else}}<span class="badge st-unknown" title="Not added by Windows because the 2011 third-party CA was never trusted on this device">not applicable</span>{{end}}{{end}}
+
 {{define "online"}}<span class="dot on-{{.}}" title="{{.}}"></span>{{end}}
 
 {{define "yesno"}}{{if .}}<span class="badge st-ok">yes</span>{{else}}<span class="badge st-warning">no</span>{{end}}{{end}}

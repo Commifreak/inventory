@@ -101,6 +101,7 @@ func applySecureBootCerts(info *protocol.SecureBootInfo, db, kek []byte) {
 		info.DBHasWindowsUEFICA2023 = boolPtr(bytes.Contains(db, []byte("Windows UEFI CA 2023")))
 		info.DBHasMicrosoftUEFICA2023 = boolPtr(bytes.Contains(db, []byte("Microsoft UEFI CA 2023")))
 		info.DBHasOptionROMCA2023 = boolPtr(bytes.Contains(db, []byte("Microsoft Option ROM UEFI CA 2023")))
+		info.DBHasMicrosoftUEFICA2011 = boolPtr(bytes.Contains(db, []byte("Microsoft Corporation UEFI CA 2011")))
 	}
 	if len(kek) > 0 {
 		info.KEKHas2023 = boolPtr(bytes.Contains(kek, []byte("KEK 2K CA 2023")))

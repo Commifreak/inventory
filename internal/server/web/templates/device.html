@@ -19,6 +19,7 @@
   <a href="?tab=events" {{if eq $d.Tab "events"}}class="active"{{end}}>Events</a>
   <a href="?tab=alerts" {{if eq $d.Tab "alerts"}}class="active"{{end}}>Alerts{{if $d.Row.Alerts}} <span class="count st-bg-{{$d.Row.AlertSev}}">{{$d.Row.Alerts}}</span>{{end}}</a>
   <a href="?tab=agent" {{if eq $d.Tab "agent"}}class="active"{{end}}>Agent</a>
+  <a href="?tab=raw" {{if eq $d.Tab "raw"}}class="active"{{end}}>Raw data</a>
 </nav>
 
 {{if eq $d.Tab "overview"}}{{template "tab_overview" .}}
@@ -29,6 +30,7 @@
 {{else if eq $d.Tab "events"}}{{template "tab_events" .}}
 {{else if eq $d.Tab "alerts"}}{{template "tab_alerts" .}}
 {{else if eq $d.Tab "agent"}}{{template "tab_agent" .}}
+{{else if eq $d.Tab "raw"}}{{template "tab_raw" .}}
 {{end}}
 {{end}}
 
@@ -75,7 +77,10 @@
         <dt>2023 certificates</dt><dd>
           {{if isSet .DBHasWindowsUEFICA2023}}Windows UEFI CA 2023 {{template "yesno" derefB .DBHasWindowsUEFICA2023}}<br>{{end}}
           {{if isSet .KEKHas2023}}KEK CA 2023 {{template "yesno" derefB .KEKHas2023}}<br>{{end}}
-          {{if isSet .DBHasMicrosoftUEFICA2023}}Microsoft UEFI CA 2023 {{template "yesno" derefB .DBHasMicrosoftUEFICA2023}}<br>{{end}}
+          {{$thirdParty2011 := or (not (isSet .DBHasMicrosoftUEFICA2011)) (derefB .DBHasMicrosoftUEFICA2011)}}
+          {{if isSet .DBHasMicrosoftUEFICA2023}}Microsoft UEFI CA 2023 {{template "thirdparty" dict "Has" (derefB .DBHasMicrosoftUEFICA2023) "Needed" $thirdParty2011}}<br>{{end}}
+          {{if isSet .DBHasOptionROMCA2023}}Option ROM UEFI CA 2023 {{template "thirdparty" dict "Has" (derefB .DBHasOptionROMCA2023) "Needed" $thirdParty2011}}<br>{{end}}
+          {{if not $thirdParty2011}}<span class="sub">Third-party CAs are only needed to boot non-Windows loaders (e.g. Linux) or option ROMs with Secure Boot; this device never trusted the 2011 third-party CA.</span><br>{{end}}
           {{if .ServicingStatus}}<span class="muted">Servicing status: {{.ServicingStatus}}</span><br>{{end}}
           {{if .Error}}<span class="warn-text">{{.Error}}</span>{{end}}
         </dd>{{end}}
@@ -392,4 +397,25 @@
     <form method="post" action="/devices/{{$dev.ID}}/delete">{{template "csrf" $csrf}}<button class="danger" data-confirm="Delete {{$dev.Name}} and all its data?">Delete</button></form>
   </div>
 </section>
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_raw"}}{{$d := .Data}}{{$dev := $d.D}}
+<section class="card">
+  <div class="cardhead"><h2>Raw data</h2><a class="button" href="/devices/{{$dev.ID}}/raw.json">Download JSON</a></div>
+  <p class="hint">Exactly what the agent reported, per collector. The download also contains the critical events of the last 90 days.
+  It includes user names, IP/MAC addresses and serial numbers – keep that in mind before sharing it.</p>
+</section>
+{{range collectors}}{{$s := index $d.Snaps .}}
+<section class="card">
+  <details>
+    <summary><b>{{.}}</b>{{if $s}} – collected {{fmtTime $s.CollectedAt}}, {{$s.DurationMs}} ms{{if $s.Error}} · <span class="err-text">error</span>{{end}}{{if $s.Warnings}} · <span class="warn-text">{{len $s.Warnings}} warning(s)</span>{{end}}{{else}} – not collected yet{{end}}</summary>
+    {{if $s}}
+      {{if $s.Error}}<p class="err-text small">{{$s.Error}}</p>{{end}}
+      {{range $s.Warnings}}<p class="warn-text small">⚠ {{.}}</p>{{end}}
+      <pre class="raw">{{prettyJSON $s.Data}}</pre>
+    {{end}}
+  </details>
+</section>
+{{end}}
 {{end}}

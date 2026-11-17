@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -37,6 +38,7 @@ func (w *webUI) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /{$}", s.requireUser(w.handleDashboard))
 	mux.HandleFunc("GET /devices/{id}", s.requireUser(w.handleDevice))
+	mux.HandleFunc("GET /devices/{id}/raw.json", s.requireUser(w.handleDeviceRaw))
 	mux.HandleFunc("POST /devices/{id}/settings", s.requireUser(w.handleDeviceSettings))
 	mux.HandleFunc("POST /devices/{id}/update-now", s.requireUser(w.handleDeviceUpdateNow))
 	mux.HandleFunc("POST /devices/{id}/collect", s.requireUser(w.handleDeviceCollect))
@@ -315,6 +317,51 @@ func (w *webUI) handleDevice(rw http.ResponseWriter, r *http.Request) {
 		data["OfflineDefault"] = s.alertSettings(ctx).Rules["offline"].Params["hours"]
 	}
 	w.render(rw, r, "device", page{Title: d.Name(), Nav: "devices", Data: data})
+}
+
+// handleDeviceRaw exports everything known about a device as JSON (diagnostics).
+func (w *webUI) handleDeviceRaw(rw http.ResponseWriter, r *http.Request) {
+	d := w.loadDevice(rw, r)
+	if d == nil {
+		return
+	}
+	ctx := r.Context()
+	snaps, _ := w.s.store.Snapshots(ctx, d.ID)
+	events, _ := w.s.store.Events(ctx, d.ID, time.Now().AddDate(0, 0, -90), 1000)
+	type section struct {
+		CollectedAt time.Time       `json:"collected_at"`
+		DurationMs  int64           `json:"duration_ms"`
+		Error       string          `json:"error,omitempty"`
+		Warnings    []string        `json:"warnings,omitempty"`
+		Data        json.RawMessage `json:"data,omitempty"`
+	}
+	out := struct {
+		Exported time.Time          `json:"exported"`
+		Server   string             `json:"server_version"`
+		Device   map[string]any     `json:"device"`
+		Sections map[string]section `json:"sections"`
+		Events   []store.Event      `json:"events"`
+	}{Exported: time.Now().UTC(), Server: w.s.cfg.Version, Sections: map[string]section{}, Events: events,
+		Device: map[string]any{"id": d.ID, "hostname": d.Hostname, "os": d.OS, "arch": d.Arch, "agent_version": d.AgentVersion,
+			"enrolled_at": d.EnrolledAt, "last_seen_at": d.LastSeenAt, "ring": d.Ring, "update_state": d.UpdateState, "update_error": d.UpdateError}}
+	for name, sn := range snaps {
+		out.Sections[name] = section{CollectedAt: sn.CollectedAt, DurationMs: sn.DurationMs, Error: sn.Error, Warnings: sn.Warnings, Data: sn.Data}
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("Cache-Control", "no-store")
+	rw.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="inventory-%s-%s.json"`, safeFile(d.Hostname), time.Now().Format("20060102-1504")))
+	enc := json.NewEncoder(rw)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(out)
+}
+
+func safeFile(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, s)
 }
 
 func addTrend(m map[string][]float64, key string, v *int64) {
