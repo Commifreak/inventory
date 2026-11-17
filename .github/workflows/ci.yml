@@ -42,13 +42,23 @@ jobs:
       - name: collect
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Continue'
           go build -o inventory-agent.exe ./cmd/inventory-agent
-          ./inventory-agent.exe collect > collect.json
-          $r = Get-Content collect.json | ConvertFrom-Json
+          $p = Start-Process -FilePath .\inventory-agent.exe -ArgumentList 'collect' -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput collect.json -RedirectStandardError collect.err
+          "exit code: $($p.ExitCode)"
+          Get-Content collect.err
+          $raw = Get-Content collect.json -Raw
+          "output: $($raw.Length) characters"
+          $r = $raw | ConvertFrom-Json
           foreach ($s in $r.sections.PSObject.Properties) {
             "{0,-10} {1,6} ms  error: {2}  warnings: {3}" -f $s.Name, $s.Value.duration_ms, $s.Value.error, ($s.Value.warnings -join '; ')
           }
+          if ($p.ExitCode -ne 0) { exit 1 }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: windows-collect
-          path: collect.json
+          path: |
+            collect.json
+            collect.err

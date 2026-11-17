@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"strings"
 	"testing"
 )
 
@@ -31,5 +32,15 @@ func TestKeys(t *testing.T) {
 	k, err := ParsePrivateKey(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 	if err != nil || !k.Equal(priv) {
 		t.Fatalf("parse private key: %v", err)
+	}
+}
+
+func TestFlattenedPEM(t *testing.T) {
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	der, _ := x509.MarshalPKCS8PrivateKey(priv)
+	p := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+	flat := strings.ReplaceAll(p, "\n", " ")
+	if k, err := ParsePrivateKey([]byte(flat)); err != nil || !k.Equal(priv) {
+		t.Fatalf("flattened PEM: %v", err)
 	}
 }

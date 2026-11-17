@@ -45,6 +45,9 @@ jobs:
           KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: test -n "$KEY" || (echo "::error::secret RELEASE_SIGNING_KEY is missing" && exit 1)
       - uses: docker/build-push-action@v6
+        env:
+          # Passed via secret-envs: the "secrets" input splits multi-line values.
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -52,7 +55,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ steps.v.outputs.version }}
-          secrets: |
-            release_signing_key=${{ secrets.RELEASE_SIGNING_KEY }}
+          secret-envs: |
+            release_signing_key=RELEASE_SIGNING_KEY
           cache-from: type=gha
           cache-to: type=gha,mode=max

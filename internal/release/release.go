@@ -118,11 +118,11 @@ func ParsePublicKey(b []byte) (ed25519.PublicKey, error) {
 // ParsePrivateKey parses a PEM (PKCS#8) Ed25519 private key as produced by
 // "openssl genpkey -algorithm ed25519".
 func ParsePrivateKey(b []byte) (ed25519.PrivateKey, error) {
-	block, _ := pem.Decode(b)
-	if block == nil {
-		return nil, errors.New("no PEM block")
+	der, err := pemOrFlattened(b, "PRIVATE KEY")
+	if err != nil {
+		return nil, err
 	}
-	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	k, err := x509.ParsePKCS8PrivateKey(der)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +131,23 @@ func ParsePrivateKey(b []byte) (ed25519.PrivateKey, error) {
 		return nil, errors.New("not an Ed25519 private key")
 	}
 	return pk, nil
+}
+
+// pemOrFlattened decodes PEM. It also accepts PEM whose line breaks were
+// lost (e.g. pasted into a single-line secret field).
+func pemOrFlattened(b []byte, typ string) ([]byte, error) {
+	if block, _ := pem.Decode(b); block != nil {
+		return block.Bytes, nil
+	}
+	s := strings.TrimSpace(string(b))
+	s = strings.TrimPrefix(s, "-----BEGIN "+typ+"-----")
+	s = strings.TrimSuffix(s, "-----END "+typ+"-----")
+	s = strings.Join(strings.Fields(s), "")
+	der, err := base64.StdEncoding.DecodeString(s)
+	if err != nil || len(der) == 0 {
+		return nil, errors.New("no PEM block")
+	}
+	return der, nil
 }
 
 // Manifest describes the agent binaries bundled with a server image.

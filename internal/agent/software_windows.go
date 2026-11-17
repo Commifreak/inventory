@@ -231,6 +231,11 @@ func scheduledTasks(ctx context.Context) ([]protocol.AutostartItem, error) {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- res{err: fmt.Errorf("task scheduler query panicked: %v", r)}
+			}
+		}()
 		items, err := scheduledTasksCOM()
 		ch <- res{items, err}
 	}()

@@ -29,6 +29,11 @@ func collectUpdatesWindows(ctx context.Context, _ *State) (any, []string, error)
 		// COM objects are bound to the OS thread.
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- result{err: fmt.Errorf("Windows Update query panicked: %v", r)}
+			}
+		}()
 		u, w, err := windowsUpdateCOM()
 		ch <- result{u, w, err}
 	}()
