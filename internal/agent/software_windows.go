@@ -63,8 +63,9 @@ func collectSoftwareWindows(ctx context.Context, _ *State) (any, []string, error
 				get("ReleaseType") == "Update" || get("ReleaseType") == "Hotfix" || get("ReleaseType") == "Security Update"
 			if !skip {
 				it := protocol.SoftwareItem{Name: name, Version: get("DisplayVersion"), Publisher: get("Publisher"), Source: "registry", Scope: scope, Arch: arch}
-				if d := get("InstallDate"); len(d) == 8 {
-					it.InstallDate = d[:4] + "-" + d[4:6] + "-" + d[6:]
+				// InstallDate is YYYYMMDD; some installers write garbage ("20234824").
+				if t, err := time.Parse("20060102", get("InstallDate")); err == nil {
+					it.InstallDate = t.Format("2006-01-02")
 				}
 				key := it.Name + "|" + it.Version + "|" + scope
 				if !seen[key] {

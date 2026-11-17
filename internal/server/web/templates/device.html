@@ -205,7 +205,7 @@
 <section class="card disk">
   <div class="diskhead">
     <h2>{{if .Model}}{{.Model}}{{else}}{{.Device}}{{end}} {{template "status" .Status}} {{if .System}}<span class="badge st-info">system disk</span>{{end}}{{if .External}}<span class="badge">external</span>{{end}}</h2>
-    <span class="sub mono">{{.Device}}{{if .Serial}} · S/N {{.Serial}}{{end}}{{if .Firmware}} · FW {{.Firmware}}{{end}}</span>
+    <span class="sub mono">{{.Device}}{{if .Volumes}} ({{join .Volumes ", "}}){{end}}{{if .Serial}} · S/N {{.Serial}}{{end}}{{if .Firmware}} · FW {{.Firmware}}{{end}}</span>
   </div>
   <div class="kv">
     <div><span>Health</span><b>{{if isSet .HealthPassed}}{{if derefB .HealthPassed}}PASSED{{else}}<span class="err-text">FAILED</span>{{end}}{{else}}unknown{{end}}</b></div>

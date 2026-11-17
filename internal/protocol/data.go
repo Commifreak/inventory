@@ -272,18 +272,20 @@ type SmartData struct {
 }
 
 type Disk struct {
-	Device         string `json:"device"` // smartctl device name, e.g. /dev/sda
-	Model          string `json:"model,omitempty"`
-	Serial         string `json:"serial,omitempty"`
-	Firmware       string `json:"firmware,omitempty"`
-	Protocol       string `json:"protocol,omitempty"`   // ATA, NVMe, SCSI
-	MediaType      string `json:"media_type,omitempty"` // SSD, HDD
-	Bus            string `json:"bus,omitempty"`        // SATA, NVMe, USB
-	SizeBytes      uint64 `json:"size_bytes,omitempty"`
-	System         bool   `json:"system"`             // disk holding the OS
-	External       bool   `json:"external,omitempty"` // USB / removable
-	SmartSupported bool   `json:"smart_supported"`
-	SmartEnabled   bool   `json:"smart_enabled"`
+	Device string `json:"device"` // /dev/sda (Linux, macOS), "Disk 0" (Windows disk number)
+	// Volumes are drive letters / mount points on this disk (Windows).
+	Volumes        []string `json:"volumes,omitempty"`
+	Model          string   `json:"model,omitempty"`
+	Serial         string   `json:"serial,omitempty"`
+	Firmware       string   `json:"firmware,omitempty"`
+	Protocol       string   `json:"protocol,omitempty"`   // ATA, NVMe, SCSI
+	MediaType      string   `json:"media_type,omitempty"` // SSD, HDD
+	Bus            string   `json:"bus,omitempty"`        // SATA, NVMe, USB
+	SizeBytes      uint64   `json:"size_bytes,omitempty"`
+	System         bool     `json:"system"`             // disk holding the OS
+	External       bool     `json:"external,omitempty"` // USB / removable
+	SmartSupported bool     `json:"smart_supported"`
+	SmartEnabled   bool     `json:"smart_enabled"`
 	// HealthPassed is the overall self-assessment. nil = unknown.
 	HealthPassed *bool  `json:"health_passed,omitempty"`
 	Temperature  *int   `json:"temperature,omitempty"` // °C

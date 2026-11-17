@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -73,6 +74,24 @@ type msftPartition struct {
 
 const storageNS = `root\Microsoft\Windows\Storage`
 
+// driveLettersByDisk maps disk numbers to their drive letters ("C:").
+func driveLettersByDisk() map[int][]string {
+	var parts []msftPartition
+	out := map[int][]string{}
+	if err := wmi.QueryNamespace("SELECT DiskNumber, DriveLetter FROM MSFT_Partition", &parts, storageNS); err != nil {
+		return out
+	}
+	for _, p := range parts {
+		if p.DriveLetter >= 'A' && p.DriveLetter <= 'Z' {
+			out[int(p.DiskNumber)] = append(out[int(p.DiskNumber)], string(rune(p.DriveLetter))+":")
+		}
+	}
+	for n := range out {
+		sort.Strings(out[n])
+	}
+	return out
+}
+
 // systemDiskNumber returns the disk number holding the system drive.
 func systemDiskNumber() (int, bool) {
 	var parts []msftPartition
@@ -98,6 +117,7 @@ func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 		}
 	}
 	sysDisk, sysKnown := systemDiskNumber()
+	letters := driveLettersByDisk()
 
 	if bin := smartctlPath(); bin != "" {
 		disks, version, w, err := SmartctlDisks(ctx, bin)
@@ -119,6 +139,10 @@ func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 						d.External, d.Bus = true, "USB"
 					}
 					d.System = sysKnown && num == sysDisk
+					// smartctl names disks like Linux (/dev/sda = PhysicalDrive0);
+					// show the Windows disk number as in Disk Management.
+					d.Device = fmt.Sprintf("Disk %d", num)
+					d.Volumes = letters[num]
 				}
 			}
 			return protocol.SmartData{Source: version, Disks: disks}, warns, nil
@@ -137,7 +161,7 @@ func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 	}
 	var disks []protocol.Disk
 	for n, p := range byNumber {
-		d := protocol.Disk{Device: fmt.Sprintf(`\\.\PhysicalDrive%d`, n), Model: strings.TrimSpace(p.FriendlyName), Serial: strings.TrimSpace(p.SerialNumber),
+		d := protocol.Disk{Device: fmt.Sprintf("Disk %d", n), Volumes: letters[n], Model: strings.TrimSpace(p.FriendlyName), Serial: strings.TrimSpace(p.SerialNumber),
 			Firmware: p.FirmwareVersion, SizeBytes: p.Size, Bus: busNames[p.BusType], System: sysKnown && n == sysDisk, External: p.BusType == 7}
 		switch p.MediaType {
 		case 3:
