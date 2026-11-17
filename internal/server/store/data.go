@@ -301,3 +301,22 @@ func (s *Store) Prune(ctx context.Context, cutoff time.Time) error {
 	}
 	return nil
 }
+
+// LastReports returns per device the time the latest report was received.
+func (s *Store) LastReports(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT device_id, MAX(received_at) FROM snapshots GROUP BY device_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var id string
+		var ts int64
+		if err := rows.Scan(&id, &ts); err != nil {
+			return nil, err
+		}
+		out[id] = time.Unix(ts, 0)
+	}
+	return out, rows.Err()
+}

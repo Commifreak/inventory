@@ -188,6 +188,7 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 	}
 	snaps, _ := s.store.AllSnapshots(ctx, protocol.CollectSMART, protocol.CollectUpdates)
 	alerts, _ := s.store.OpenAlerts(ctx)
+	lastReports, _ := s.store.LastReports(ctx)
 	now := time.Now()
 	checkin := s.collectionConfig(ctx).CheckinIntervalSec
 	var rows []DeviceRow
@@ -196,6 +197,7 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 	problems := r.URL.Query().Get("problems") == "1"
 	for _, d := range devices {
 		row := s.deviceRow(d, snaps[d.ID], alerts, now, checkin)
+		row.LastReport = lastReports[d.ID]
 		if latest := s.agents.Latest(d.OS, d.Arch, true); latest != "" && CompareVersions(latest, d.AgentVersion) > 0 {
 			row.AgentLatest = latest
 		}

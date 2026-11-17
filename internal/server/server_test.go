@@ -314,7 +314,7 @@ func TestEndToEnd(t *testing.T) {
 	resp, _ = c.PostForm(ts.URL+"/account/password", url.Values{"csrf": {csrf[1]}, "current": {"initial-password-1"}, "new": {"a-much-better-password"}, "confirm": {"a-much-better-password"}})
 	resp.Body.Close()
 	page = get(t, c, ts.URL+"/")
-	if !strings.Contains(page, "PC-ANNA") {
+	if !strings.Contains(page, "PC-ANNA") || !strings.Contains(page, "Last report") {
 		t.Fatalf("dashboard does not list device")
 	}
 	if p := get(t, c, ts.URL+"/devices/"+er.DeviceID+"?tab=overview"); !strings.Contains(p, "not applicable") {

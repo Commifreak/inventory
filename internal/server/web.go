@@ -391,7 +391,8 @@ type DeviceRow struct {
 	SearchError   string
 	Alerts        int
 	AlertSev      string
-	AgentLatest   string // newest signed agent for the platform, if newer than the installed one
+	AgentLatest   string    // newest signed agent for the platform, if newer than the installed one
+	LastReport    time.Time // latest collector data received
 	Overall       string
 }
 
@@ -468,6 +469,8 @@ func sortRows(rows []DeviceRow, by string) {
 			}
 		case "seen":
 			return rows[i].D.LastSeenAt.After(rows[j].D.LastSeenAt)
+		case "report":
+			return rows[i].LastReport.After(rows[j].LastReport)
 		}
 		return strings.ToLower(rows[i].D.Name()) < strings.ToLower(rows[j].D.Name())
 	})
