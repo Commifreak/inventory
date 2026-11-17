@@ -152,8 +152,27 @@ func TestEndToEnd(t *testing.T) {
 	api := ts.URL + protocol.APIPrefix
 
 	// Invalid token is rejected.
-	if code := postJSON(t, api+"/enroll", "", protocol.EnrollRequest{Token: "nope", Identity: protocol.Identity{Hostname: "x", OS: "linux", Arch: "amd64"}}, nil); code != http.StatusForbidden {
+	if code := postJSON(t, api+"/enroll", "", protocol.EnrollRequest{Token: "nope-unknown-token", Identity: protocol.Identity{Hostname: "INTRUDER", OS: "linux", Arch: "amd64"}}, nil); code != http.StatusForbidden {
 		t.Fatalf("enroll with bad token: %d", code)
+	}
+	if resp, err := http.Get(api + "/install/another-bad-token/install.sh"); err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("installer with bad token: %v %v", resp, err)
+	} else {
+		resp.Body.Close()
+	}
+	// Both attempts are in the audit log, with only a token prefix.
+	audit, _ := s.store.ListAudit(ctx, 10)
+	var found []string
+	for _, a := range audit {
+		if strings.HasSuffix(a.Action, ".rejected") {
+			found = append(found, a.Action+" "+a.Details)
+			if strings.Contains(a.Details, "unknown-token") || strings.Contains(a.Details, "bad-token") {
+				t.Errorf("full token logged: %s", a.Details)
+			}
+		}
+	}
+	if len(found) != 2 || !strings.Contains(strings.Join(found, "|"), `host "INTRUDER"`) || !strings.Contains(strings.Join(found, "|"), "installer.rejected unknown token anothe…") {
+		t.Errorf("rejected attempts not audited: %v", found)
 	}
 
 	ident := protocol.Identity{Hostname: "PC-ANNA", OS: "windows", Arch: "amd64", HardwareID: "HW-1", MachineID: "M-1"}

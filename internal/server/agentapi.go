@@ -89,6 +89,9 @@ func newDeviceID() string {
 func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	if !s.limiter.allow("enroll:"+ip, 10, 2) {
+		if s.limiter.allow("enroll-log:"+ip, 1, 1) { // at most one log line per minute and IP
+			s.log.Warn("enrollment rate limit exceeded", "ip", ip, "user_agent", r.UserAgent())
+		}
 		jsonError(w, http.StatusTooManyRequests, "too many enrollment attempts")
 		return
 	}
@@ -99,8 +102,10 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	tok, err := s.store.TokenByValue(r.Context(), req.Token)
 	if err != nil || !tok.Active() {
-		s.log.Warn("enrollment with invalid token", "ip", ip, "hostname", req.Identity.Hostname)
-		jsonError(w, http.StatusForbidden, "invalid or revoked enrollment token")
+		id := req.Identity
+		reason := s.rejectedToken(r, "enrollment", req.Token, tok, err,
+			fmt.Sprintf("host %q (%s/%s, agent %s, hardware ID %s)", id.Hostname, id.OS, id.Arch, req.AgentVersion, id.HardwareID))
+		jsonError(w, http.StatusForbidden, reason)
 		return
 	}
 	id := req.Identity
@@ -276,10 +281,39 @@ func (s *Server) installToken(w http.ResponseWriter, r *http.Request) (*store.En
 	}
 	tok, err := s.store.TokenByValue(r.Context(), r.PathValue("token"))
 	if err != nil || !tok.Active() {
-		http.Error(w, "invalid or revoked enrollment token", http.StatusForbidden)
+		reason := s.rejectedToken(r, "installer download", r.PathValue("token"), tok, err, "")
+		http.Error(w, reason, http.StatusForbidden)
 		return nil, false
 	}
 	return tok, true
+}
+
+// rejectedToken logs an attempt with an unknown or revoked enrollment token
+// (server log and audit log) and returns the reason for the client. Only a
+// short prefix of the presented token is recorded.
+func (s *Server) rejectedToken(r *http.Request, what, presented string, tok *store.EnrollmentToken, lookupErr error, details string) string {
+	reason, kind := "unknown enrollment token", "unknown token"
+	if lookupErr == nil && tok != nil {
+		reason, kind = "revoked enrollment token", fmt.Sprintf("revoked token %q", tok.Name)
+	} else if lookupErr != nil && !errors.Is(lookupErr, store.ErrNotFound) {
+		s.log.Error("enrollment token lookup failed", "err", lookupErr)
+	}
+	prefix := presented
+	if len(prefix) > 6 {
+		prefix = prefix[:6] + "…"
+	}
+	ip := s.clientIP(r)
+	s.log.Warn("rejected "+what, "reason", kind, "token_prefix", prefix, "ip", ip, "user_agent", r.UserAgent(), "details", details)
+	msg := fmt.Sprintf("%s %s from %s", kind, prefix, ip)
+	if details != "" {
+		msg += " – " + details
+	}
+	action := "enrollment.rejected"
+	if what != "enrollment" {
+		action = "installer.rejected"
+	}
+	s.store.Audit(r.Context(), "", action, msg)
+	return reason
 }
 
 func (s *Server) handleInstallBinary(w http.ResponseWriter, r *http.Request) {
