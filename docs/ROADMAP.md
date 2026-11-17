@@ -3,7 +3,7 @@
 | # | Milestone | State |
 |---|---|---|
 | 1 | Server core: database, local login, web UI, agent API, Docker image | done |
-| 2 | Windows agent: installer, service, SMART, Windows Update, software, extras | done – needs testing on real clients |
+| 2 | Windows agent: installer, service, SMART, Windows Update, software, extras | done – collectors verified on a Windows CI runner; installer/service need a test on a real client |
 | 3 | Alerts via SMTP with configurable rules | done |
 | 4 | Agent self-updates: signing, rings, pause, pin, update now, rollback | done |
 | 5 | Linux agent (x64, arm64, armv7) with install script | done |
