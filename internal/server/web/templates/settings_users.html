@@ -1,0 +1,33 @@
+{{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}{{$me := .User}}
+<h1>Settings</h1>
+{{template "settingsnav" "users"}}
+<section class="card">
+  <h2>Users</h2>
+  <p class="hint">All users are administrators. Users signing in via single sign-on are created automatically.</p>
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>User</th><th>Type</th><th>Last login</th><th>State</th><th>Actions</th></tr></thead>
+    <tbody>{{range $d.Users}}<tr class="{{if .Disabled}}dim{{end}}">
+      <td><b>{{.Username}}</b>{{if .Email}} <span class="sub">{{.Email}}</span>{{end}}{{if eq .ID $me.ID}} <span class="badge">you</span>{{end}}</td>
+      <td>{{if .OIDCSubject}}SSO{{else}}local{{end}}</td>
+      <td>{{fmtTime .LastLoginAt}}</td>
+      <td>{{if .Disabled}}disabled{{else if .MustChangePassword}}must change password{{else}}active{{end}}</td>
+      <td class="actions">
+        {{if not .OIDCSubject}}<form method="post" action="/settings/users/{{.ID}}/password" class="inline">{{template "csrf" $csrf}}<input type="password" name="password" placeholder="new password" minlength="12" autocomplete="new-password" class="short"><button class="small">Set</button></form>{{end}}
+        {{if ne .ID $me.ID}}
+          {{if .Disabled}}<form method="post" action="/settings/users/{{.ID}}/enable" class="inline">{{template "csrf" $csrf}}<button class="small">Enable</button></form>
+          {{else}}<form method="post" action="/settings/users/{{.ID}}/disable" class="inline">{{template "csrf" $csrf}}<button class="small">Disable</button></form>{{end}}
+          <form method="post" action="/settings/users/{{.ID}}/delete" class="inline">{{template "csrf" $csrf}}<button class="small danger" data-confirm="Delete user {{.Username}}?">Delete</button></form>
+        {{end}}
+      </td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+<section class="card narrowcard">
+  <h2>Add local user</h2>
+  <form method="post" action="/settings/users">
+    {{template "csrf" $csrf}}
+    <label>User name <input name="username" required autocomplete="off"></label>
+    <label>Initial password <small class="muted">(min. 12 characters, must be changed at first login)</small> <input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>
+    <button class="primary">Add user</button>
+  </form>
+</section>
+{{end}}

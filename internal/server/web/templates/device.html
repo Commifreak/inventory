@@ -1,0 +1,379 @@
+{{define "content"}}
+{{$d := .Data}}{{$dev := $d.D}}{{$csrf := .CSRF}}
+<div class="pagehead">
+  <div>
+    <h1>{{template "online" $d.Row.Online}} {{$dev.Name}} {{template "status" $d.Row.Overall}}</h1>
+    <p class="sub">{{$dev.Hostname}} · {{if $dev.OSName}}{{$dev.OSName}}{{else}}{{$dev.OS}}{{end}} · {{$dev.Arch}} · last seen {{ago $dev.LastSeenAt}}{{if $dev.LastIP}} from {{$dev.LastIP}}{{end}}
+    {{if not $dev.RevokedAt.IsZero}} · <span class="err-text">revoked {{fmtTime $dev.RevokedAt}}</span>{{end}}</p>
+    {{if $dev.Notes}}<p class="notes">{{$dev.Notes}}</p>{{end}}
+  </div>
+  <form method="post" action="/devices/{{$dev.ID}}/collect">{{template "csrf" $csrf}}<input type="hidden" name="tab" value="{{$d.Tab}}"><button title="Ask the agent to collect everything at its next check-in">Collect now</button></form>
+</div>
+
+<nav class="tabs">
+  <a href="?tab=overview" {{if eq $d.Tab "overview"}}class="active"{{end}}>Overview</a>
+  <a href="?tab=disks" {{if eq $d.Tab "disks"}}class="active"{{end}}>Disks{{if or (eq $d.Row.DiskStatus "warning") (eq $d.Row.DiskStatus "critical")}} <span class="dot st-bg-{{$d.Row.DiskStatus}}"></span>{{end}}</a>
+  <a href="?tab=updates" {{if eq $d.Tab "updates"}}class="active"{{end}}>Updates{{if $d.Row.Pending}} <span class="count">{{$d.Row.Pending}}</span>{{end}}</a>
+  <a href="?tab=software" {{if eq $d.Tab "software"}}class="active"{{end}}>Software</a>
+  <a href="?tab=autostart" {{if eq $d.Tab "autostart"}}class="active"{{end}}>Autostart</a>
+  <a href="?tab=events" {{if eq $d.Tab "events"}}class="active"{{end}}>Events</a>
+  <a href="?tab=alerts" {{if eq $d.Tab "alerts"}}class="active"{{end}}>Alerts{{if $d.Row.Alerts}} <span class="count st-bg-{{$d.Row.AlertSev}}">{{$d.Row.Alerts}}</span>{{end}}</a>
+  <a href="?tab=agent" {{if eq $d.Tab "agent"}}class="active"{{end}}>Agent</a>
+</nav>
+
+{{if eq $d.Tab "overview"}}{{template "tab_overview" .}}
+{{else if eq $d.Tab "disks"}}{{template "tab_disks" .}}
+{{else if eq $d.Tab "updates"}}{{template "tab_updates" .}}
+{{else if eq $d.Tab "software"}}{{template "tab_software" .}}
+{{else if eq $d.Tab "autostart"}}{{template "tab_autostart" .}}
+{{else if eq $d.Tab "events"}}{{template "tab_events" .}}
+{{else if eq $d.Tab "alerts"}}{{template "tab_alerts" .}}
+{{else if eq $d.Tab "agent"}}{{template "tab_agent" .}}
+{{end}}
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_overview"}}{{$d := .Data}}
+{{template "sectionmeta" index $d.Snaps "system"}}
+{{with $d.Sys}}
+<div class="grid">
+  <section class="card">
+    <h2>Operating system</h2>
+    <dl>
+      <dt>Name</dt><dd>{{.OS.Name}}{{if .OS.DisplayVersion}} ({{.OS.DisplayVersion}}){{end}}</dd>
+      <dt>Version</dt><dd class="mono">{{.OS.Version}}{{if .OS.Build}} · build {{.OS.Build}}{{end}}</dd>
+      {{if .OS.Kernel}}<dt>Kernel</dt><dd class="mono">{{.OS.Kernel}}</dd>{{end}}
+      {{if .OS.Edition}}<dt>Edition</dt><dd>{{.OS.Edition}}</dd>{{end}}
+      <dt>Architecture</dt><dd>{{.OS.Arch}}</dd>
+      {{with $d.EOL}}<dt>Support</dt><dd>
+        {{if .IsEOL}}<span class="badge st-critical">ended{{if not .EOL.IsZero}} {{fmtDate .EOL}}{{end}}</span>
+        {{else if not .EOL.IsZero}}until {{fmtDate .EOL}}
+        {{else}}supported{{end}}</dd>{{end}}
+      {{if not .OS.InstallDate.IsZero}}<dt>Installed</dt><dd>{{fmtDate .OS.InstallDate}}</dd>{{end}}
+      <dt>Booted</dt><dd>{{fmtTime .OS.BootTime}} <span class="muted">({{ago .OS.BootTime}})</span></dd>
+      {{if .OS.Timezone}}<dt>Time zone</dt><dd>{{.OS.Timezone}}</dd>{{end}}
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Hardware</h2>
+    <dl>
+      <dt>Model</dt><dd>{{.Hardware.Manufacturer}} {{.Hardware.Model}}{{if .Hardware.Virtual}} <span class="badge st-info">virtual</span>{{end}}</dd>
+      {{if .Hardware.SerialNumber}}<dt>Serial</dt><dd class="mono">{{.Hardware.SerialNumber}}</dd>{{end}}
+      <dt>CPU</dt><dd>{{.Hardware.CPU}}{{if .Hardware.CPUCores}} <span class="muted">({{.Hardware.CPUCores}} cores / {{.Hardware.CPUThreads}} threads)</span>{{end}}</dd>
+      <dt>Memory</dt><dd>{{bytes .Hardware.MemoryBytes}}</dd>
+      {{if .Hardware.Board}}<dt>Board</dt><dd>{{.Hardware.Board}}</dd>{{end}}
+      {{if .Hardware.BIOSVersion}}<dt>BIOS/UEFI</dt><dd>{{.Hardware.BIOSVendor}} {{.Hardware.BIOSVersion}} {{.Hardware.BIOSDate}}</dd>{{end}}
+      {{if .Hardware.UUID}}<dt>UUID</dt><dd class="mono small">{{.Hardware.UUID}}</dd>{{end}}
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Security</h2>
+    <dl>
+      {{with .Security.SecureBoot}}
+        <dt>Secure Boot</dt><dd>{{if not .Supported}}<span class="muted">not available (legacy BIOS or no UEFI variables)</span>{{else if .Enabled}}<span class="badge st-ok">enabled</span>{{else}}<span class="badge st-warning">disabled</span>{{end}}</dd>
+        {{if .Supported}}
+        <dt>2023 certificates</dt><dd>
+          {{if isSet .DBHasWindowsUEFICA2023}}Windows UEFI CA 2023 {{template "yesno" derefB .DBHasWindowsUEFICA2023}}<br>{{end}}
+          {{if isSet .KEKHas2023}}KEK CA 2023 {{template "yesno" derefB .KEKHas2023}}<br>{{end}}
+          {{if isSet .DBHasMicrosoftUEFICA2023}}Microsoft UEFI CA 2023 {{template "yesno" derefB .DBHasMicrosoftUEFICA2023}}<br>{{end}}
+          {{if .ServicingStatus}}<span class="muted">Servicing status: {{.ServicingStatus}}</span><br>{{end}}
+          {{if .Error}}<span class="warn-text">{{.Error}}</span>{{end}}
+        </dd>{{end}}
+      {{end}}
+      {{with .Security.TPM}}<dt>TPM</dt><dd>{{if .Present}}{{.Version}}{{else}}<span class="muted">none</span>{{end}}</dd>{{end}}
+      {{with .Security.Defender}}
+        <dt>Defender</dt><dd>{{if not .Present}}<span class="muted">not present</span>{{else}}
+          {{if contains (lower .RunningMode) "passive"}}<span class="badge st-info">passive</span>
+          {{else if and .AntivirusEnabled .RealTimeProtection}}<span class="badge st-ok">active</span>
+          {{else}}<span class="badge st-critical">disabled</span>{{end}}
+          <div class="sub">Mode: {{.RunningMode}} · real-time {{if .RealTimeProtection}}on{{else}}off{{end}} · signatures {{.SignatureAgeDays}} day(s) old{{if isSet .TamperProtection}} · tamper protection {{if derefB .TamperProtection}}on{{else}}off{{end}}{{end}}</div>{{end}}</dd>
+      {{end}}
+      {{with .Security.Activation}}<dt>Activation</dt><dd>{{if .Licensed}}<span class="badge st-ok">licensed</span>{{else}}<span class="badge st-warning">{{.Status}}</span>{{end}}{{if .Channel}} <span class="sub">{{.Channel}}</span>{{end}}</dd>{{end}}
+      {{range .Volumes}}{{if .Encryption}}<dt>Encryption {{.Mount}}</dt><dd>{{.Encryption}}</dd>{{end}}{{end}}
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Users</h2>
+    <dl>
+      <dt>Logged on</dt><dd>{{if .Users.CurrentUsers}}{{join .Users.CurrentUsers ", "}}{{else}}<span class="muted">nobody</span>{{end}}</dd>
+      <dt>{{if .Users.AdminGroup}}{{.Users.AdminGroup}}{{else}}Administrators{{end}}</dt><dd>{{if .Users.Admins}}{{join .Users.Admins ", "}}{{else}}<span class="muted">–</span>{{end}}</dd>
+    </dl>
+    {{if .Users.LastLogons}}
+    <table class="compact"><thead><tr><th>User</th><th>Last logon</th></tr></thead><tbody>
+      {{range .Users.LastLogons}}<tr><td>{{.User}}</td><td>{{fmtTime .Time}}{{if .From}} <span class="muted">from {{.From}}</span>{{end}}</td></tr>{{end}}
+    </tbody></table>{{end}}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Volumes</h2>
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Volume</th><th>File system</th><th>Size</th><th>Free</th><th class="w30">Used</th></tr></thead>
+    <tbody>
+    {{range .Volumes}}{{$u := volUsed .}}
+      <tr><td>{{.Mount}}{{if .Label}} <span class="muted">{{.Label}}</span>{{end}}{{if .System}} <span class="badge st-info">system</span>{{end}}</td>
+        <td>{{.FS}}</td><td>{{bytes .SizeBytes}}</td><td>{{bytes .FreeBytes}}</td>
+        <td><meter min="0" max="100" low="80" high="90" optimum="10" value="{{printf "%.1f" $u}}"></meter> <span class="sub">{{printf "%.0f" $u}}%</span></td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</section>
+
+<div class="grid">
+<section class="card">
+  <h2>Network</h2>
+  <dl>
+    {{if .WiFiSSID}}<dt>Wi-Fi</dt><dd>{{.WiFiSSID}}</dd>{{end}}
+    {{if .Gateways}}<dt>Gateway</dt><dd class="mono">{{join .Gateways ", "}}</dd>{{end}}
+    {{if .DNS}}<dt>DNS</dt><dd class="mono">{{join .DNS ", "}}</dd>{{end}}
+  </dl>
+  <table class="compact"><thead><tr><th>Adapter</th><th>Addresses</th><th>MAC</th></tr></thead><tbody>
+  {{range .Network}}<tr class="{{if not .Up}}dim{{end}}"><td>{{.Name}}{{if .Wireless}} 📶{{end}}<div class="sub">{{.Description}}</div></td>
+    <td class="mono small">{{range $i, $ip := .IPs}}{{if $i}}<br>{{end}}{{$ip}}{{end}}{{if isSet .DHCP}}<div class="sub">{{if derefB .DHCP}}DHCP{{else}}static{{end}}</div>{{end}}</td><td class="mono small">{{.MAC}}</td></tr>{{end}}
+  </tbody></table>
+</section>
+{{if .Battery}}
+<section class="card">
+  <h2>Battery</h2>
+  <table class="compact"><thead><tr><th>Battery</th><th>Health</th><th>Capacity</th><th>Cycles</th></tr></thead><tbody>
+  {{range .Battery}}<tr><td>{{.Name}}<div class="sub">{{.Status}}</div></td><td>{{printf "%.0f" .HealthPercent}}%</td><td>{{printf "%.0f" .FullChargeCapacity}} / {{printf "%.0f" .DesignCapacity}} mWh</td><td>{{if .CycleCount}}{{.CycleCount}}{{else}}–{{end}}</td></tr>{{end}}
+  </tbody></table>
+</section>
+{{end}}
+</div>
+{{end}}
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_disks"}}{{$d := .Data}}
+{{template "sectionmeta" index $d.Snaps "smart"}}
+{{with $d.Smart}}<p class="meta">Source: {{.Source}}</p>{{end}}
+{{range $d.Disks}}
+<section class="card disk">
+  <div class="diskhead">
+    <h2>{{if .Model}}{{.Model}}{{else}}{{.Device}}{{end}} {{template "status" .Status}} {{if .System}}<span class="badge st-info">system disk</span>{{end}}{{if .External}}<span class="badge">external</span>{{end}}</h2>
+    <span class="sub mono">{{.Device}}{{if .Serial}} · S/N {{.Serial}}{{end}}{{if .Firmware}} · FW {{.Firmware}}{{end}}</span>
+  </div>
+  <div class="kv">
+    <div><span>Health</span><b>{{if isSet .HealthPassed}}{{if derefB .HealthPassed}}PASSED{{else}}<span class="err-text">FAILED</span>{{end}}{{else}}unknown{{end}}</b></div>
+    <div><span>Type</span><b>{{.Protocol}} {{.MediaType}}{{if .Bus}} · {{.Bus}}{{end}}</b></div>
+    {{if .SizeBytes}}<div><span>Capacity</span><b>{{bytes .SizeBytes}}</b></div>{{end}}
+    {{if .Temperature}}<div><span>Temperature</span><b>{{deref .Temperature}} °C</b></div>{{end}}
+    {{if .PowerOnHours}}<div><span>Power on</span><b>{{deref .PowerOnHours}} h</b></div>{{end}}
+    {{if .PowerCycles}}<div><span>Power cycles</span><b>{{deref .PowerCycles}}</b></div>{{end}}
+    {{if .Reallocated}}<div><span>Reallocated</span><b>{{deref .Reallocated}}</b></div>{{end}}
+    {{if .Pending}}<div><span>Pending</span><b>{{deref .Pending}}</b></div>{{end}}
+    {{if .Uncorrectable}}<div><span>Uncorrectable</span><b>{{deref .Uncorrectable}}</b></div>{{end}}
+    {{if .CRCErrors}}<div><span>CRC errors</span><b>{{deref .CRCErrors}}</b></div>{{end}}
+    {{if .PercentUsed}}<div><span>Wear (used)</span><b>{{deref .PercentUsed}} %</b></div>{{end}}
+    {{if .AvailableSpare}}<div><span>Available spare</span><b>{{deref .AvailableSpare}} %{{if .SpareThreshold}} <small class="muted">(min {{deref .SpareThreshold}} %)</small>{{end}}</b></div>{{end}}
+    {{if .MediaErrors}}<div><span>Media errors</span><b>{{deref .MediaErrors}}</b></div>{{end}}
+    {{if .CriticalWarning}}<div><span>Critical warning</span><b>{{deref .CriticalWarning}}</b></div>{{end}}
+    {{if .UnsafeShutdowns}}<div><span>Unsafe shutdowns</span><b>{{deref .UnsafeShutdowns}}</b></div>{{end}}
+    {{if .DataWrittenTB}}<div><span>Data written</span><b>{{deref .DataWrittenTB}} TB</b></div>{{end}}
+  </div>
+  {{if .Trends}}<div class="trends">{{range $k, $v := .Trends}}{{if gt (len $v) 1}}<div><span class="sub">{{$k}} (90 days)</span>{{sparkline $v}}</div>{{end}}{{end}}</div>{{end}}
+  {{range .Messages}}<p class="warn-text small">{{.}}</p>{{end}}
+  {{if .Attributes}}
+  <details><summary>SMART attributes ({{len .Attributes}})</summary>
+    <div class="tablewrap"><table class="compact mono small">
+      <thead><tr><th>ID</th><th>Attribute</th><th>Value</th><th>Worst</th><th>Thresh</th><th>Raw</th><th>Failing</th></tr></thead>
+      <tbody>{{range .Attributes}}<tr class="{{if .Failing}}rowwarn{{end}}"><td>{{.ID}}</td><td>{{.Name}}</td><td>{{.Value}}</td><td>{{.Worst}}</td><td>{{.Threshold}}</td><td>{{.Raw}}</td><td>{{.Failing}}</td></tr>{{end}}</tbody>
+    </table></div>
+  </details>{{end}}
+</section>
+{{else}}
+<div class="card empty"><p>No disk data{{if index $d.Snaps "smart"}} – no disks with SMART support were found{{end}}.</p></div>
+{{end}}
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_updates"}}{{$d := .Data}}
+{{template "sectionmeta" index $d.Snaps "updates"}}
+{{with $d.Updates}}
+<div class="grid">
+<section class="card">
+  <h2>Status</h2>
+  <dl>
+    <dt>Manager</dt><dd>{{.Manager}}{{if .Source}} <span class="muted">({{.Source}})</span>{{end}}</dd>
+    <dt>Pending</dt><dd>{{if .PendingCount}}<span class="badge st-warning">{{.PendingCount}}</span>{{if .SecurityCount}} <span class="badge st-warning">{{.SecurityCount}} security</span>{{end}}{{else}}<span class="badge st-ok">up to date</span>{{end}}</dd>
+    <dt>Reboot required</dt><dd>{{if .RebootRequired}}<span class="badge st-warning">yes</span>{{if .RebootReasons}} <span class="sub">{{join .RebootReasons ", "}}</span>{{end}}{{else}}no{{end}}</dd>
+    <dt>Last search</dt><dd>{{fmtTime .LastSearch}}</dd>
+    <dt>Last install</dt><dd>{{fmtTime .LastInstall}}</dd>
+    {{if isSet .AutoUpdates}}<dt>Automatic updates</dt><dd>{{if derefB .AutoUpdates}}on{{else}}<span class="badge st-warning">off</span>{{end}} <span class="sub">{{.AutoUpdatesInfo}}</span></dd>{{end}}
+    {{if .SearchError}}<dt>Search error</dt><dd class="err-text">{{.SearchError}}</dd>{{end}}
+  </dl>
+</section>
+{{if .Services}}
+<section class="card">
+  <h2>Services</h2>
+  <table class="compact"><thead><tr><th>Service</th><th>State</th><th>Start</th></tr></thead><tbody>
+  {{range .Services}}<tr><td>{{.Display}} <span class="sub mono">{{.Name}}</span></td><td>{{.State}}</td><td>{{.StartType}}</td></tr>{{end}}
+  </tbody></table>
+</section>{{end}}
+</div>
+
+<section class="card">
+  <h2>Pending updates</h2>
+  {{if .Pending}}
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Update</th><th>Category</th><th>Version / KB</th><th>Released</th></tr></thead>
+    <tbody>{{range .Pending}}<tr><td>{{.Title}}{{if .Security}} <span class="badge st-warning">security</span>{{end}}{{if .Severity}} <span class="sub">{{.Severity}}</span>{{end}}</td><td>{{.Category}}</td><td class="mono small">{{.Version}}{{.KB}}</td><td>{{fmtDate .Released}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No pending updates.</p>{{end}}
+</section>
+
+{{if .History}}
+<section class="card">
+  <h2>History</h2>
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Date</th><th>Update</th><th>Result</th></tr></thead>
+    <tbody>{{range .History}}<tr class="{{if or (eq .Result "Failed") (eq .Result "Aborted")}}rowwarn{{end}}"><td class="nowrap">{{fmtTime .Date}}</td><td>{{.Title}}{{if .Operation}} <span class="sub">{{.Operation}}</span>{{end}}{{if .Message}}<div class="sub">{{.Message}}</div>{{end}}</td>
+      <td>{{if eq .Result "Succeeded"}}<span class="badge st-ok">{{.Result}}</span>{{else if or (eq .Result "Failed") (eq .Result "Aborted")}}<span class="badge st-critical">{{.Result}}</span>{{else}}<span class="badge">{{.Result}}</span>{{end}} <span class="mono small">{{.HResult}}</span></td></tr>{{end}}</tbody>
+  </table></div>
+</section>{{end}}
+{{end}}
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_software"}}{{$d := .Data}}
+{{template "sectionmeta" index $d.Snaps "software"}}
+{{with $d.Software}}
+<section class="card">
+  <div class="cardhead"><h2>Installed software ({{len .Items}})</h2><input type="search" placeholder="Filter …" data-filter="#swtable"></div>
+  <div class="tablewrap"><table class="compact" id="swtable">
+    <thead><tr><th>Name</th><th>Version</th><th>Publisher</th><th>Installed</th><th>Source</th></tr></thead>
+    <tbody>{{range .Items}}<tr><td>{{.Name}}</td><td class="mono small">{{.Version}}</td><td>{{.Publisher}}</td><td class="nowrap">{{.InstallDate}}</td><td class="sub">{{.Source}}{{if .Scope}}{{if ne .Scope "machine"}} · {{.Scope}}{{end}}{{end}}{{if .Arch}} · {{.Arch}}{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+<section class="card">
+  <h2>Change log</h2>
+  {{if $d.Changes}}
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Detected</th><th>Change</th><th>Software</th><th>Version</th></tr></thead>
+    <tbody>{{range $d.Changes}}<tr><td class="nowrap">{{fmtTime .Time}}</td>
+      <td>{{if eq .Change "installed"}}<span class="badge st-ok">installed</span>{{else if eq .Change "removed"}}<span class="badge st-warning">removed</span>{{else}}<span class="badge st-info">updated</span>{{end}}</td>
+      <td>{{.Name}} <span class="sub">{{.Source}}</span></td>
+      <td class="mono small">{{if .VersionOld}}{{.VersionOld}}{{end}}{{if and .VersionOld .VersionNew}} → {{end}}{{.VersionNew}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No changes recorded yet. Changes are detected from the second inventory on.</p>{{end}}
+</section>
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_autostart"}}{{$d := .Data}}
+{{template "sectionmeta" index $d.Snaps "autostart"}}
+{{with $d.Autostart}}
+<section class="card">
+  <div class="cardhead"><h2>Autostart entries ({{len .Items}})</h2>
+    <span><label class="check"><input type="checkbox" data-toggle-class="hidevendor" data-target="#astable" checked> Hide OS/vendor entries</label>
+    <input type="search" placeholder="Filter …" data-filter="#astable"></span></div>
+  <div class="tablewrap"><table class="compact hidevendor" id="astable">
+    <thead><tr><th>Name</th><th>Location</th><th>Command</th><th>State</th></tr></thead>
+    <tbody>{{range .Items}}<tr class="{{if .Vendor}}vendor{{end}} {{if not .Enabled}}dim{{end}}"><td>{{.Name}}{{if .Scope}}{{if ne .Scope "machine"}} <span class="sub">{{.Scope}}</span>{{end}}{{end}}</td><td class="sub">{{.Location}}</td><td class="mono small break">{{.Command}}</td><td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_events"}}{{$d := .Data}}
+{{template "sectionmeta" index $d.Snaps "events"}}
+<section class="card">
+  <h2>Critical events (last 365 days)</h2>
+  {{if $d.Events}}
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Time</th><th>Kind</th><th>Source</th><th>Message</th></tr></thead>
+    <tbody>{{range $d.Events}}<tr><td class="nowrap">{{fmtTime .Time}}</td>
+      <td>{{if eq .Kind "bluescreen"}}<span class="badge st-critical">bluescreen</span>{{else if eq .Kind "disk_error"}}<span class="badge st-warning">disk error</span>{{else if eq .Kind "oom"}}<span class="badge st-warning">out of memory</span>{{else}}{{.Kind}}{{end}}</td>
+      <td class="sub">{{.Source}}{{if .EventID}} · {{.EventID}}{{end}}{{if .Disk}} · {{.Disk}}{{end}}</td><td class="small break">{{.Message}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No bluescreens, disk errors or out-of-memory events recorded.</p>{{end}}
+</section>
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_alerts"}}{{$d := .Data}}
+<section class="card">
+  <h2>Alerts</h2>
+  {{if $d.Alerts}}
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>State</th><th>Alert</th><th>Message</th><th>Opened</th><th>Resolved</th></tr></thead>
+    <tbody>{{range $d.Alerts}}<tr class="{{if eq .State "resolved"}}dim{{end}}">
+      <td>{{if eq .State "open"}}<span class="badge st-{{.Severity}}">{{.Severity}}</span>{{else}}<span class="badge">resolved</span>{{end}}</td>
+      <td>{{ruleTitle .Rule}}</td><td class="small">{{.Message}}</td><td class="nowrap">{{fmtTime .OpenedAt}}</td><td class="nowrap">{{fmtTime .ResolvedAt}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No alerts.</p>{{end}}
+</section>
+{{end}}
+
+{{/* ================================================================== */}}
+{{define "tab_agent"}}{{$d := .Data}}{{$dev := $d.D}}{{$csrf := .CSRF}}
+<div class="grid">
+<section class="card">
+  <h2>Agent</h2>
+  <dl>
+    <dt>Version</dt><dd class="mono">{{$dev.AgentVersion}}</dd>
+    <dt>Device ID</dt><dd class="mono small">{{$dev.ID}}</dd>
+    <dt>Enrolled</dt><dd>{{fmtTime $dev.EnrolledAt}}</dd>
+    <dt>Last check-in</dt><dd>{{fmtTime $dev.LastSeenAt}} <span class="muted">({{ago $dev.LastSeenAt}})</span></dd>
+    {{if $dev.ClockSkewSec}}<dt>Clock offset</dt><dd>{{$dev.ClockSkewSec}} s</dd>{{end}}
+    <dt>Update ring</dt><dd>{{$dev.Ring}}</dd>
+    <dt>Target version</dt><dd>{{if $d.Target}}<span class="mono">{{$d.Target}}</span>{{else}}<span class="muted">stay on current</span>{{end}} <span class="sub">({{$d.TargetReason}})</span></dd>
+    {{if $dev.UpdateState}}<dt>Update state</dt><dd>{{$dev.UpdateState}} {{$dev.UpdateTarget}} <span class="sub">{{fmtTime $dev.UpdateChangedAt}}</span>{{if $dev.UpdateError}}<div class="err-text small">{{$dev.UpdateError}}</div>{{end}}</dd>{{end}}
+  </dl>
+  <form method="post" action="/devices/{{$dev.ID}}/update-now" class="row">
+    {{template "csrf" $csrf}}
+    <select name="version">
+      {{range $d.Versions}}<option value="{{.Version}}" {{if eq .Version $d.Latest}}selected{{end}}>{{.Version}}{{if eq .Version $d.Latest}} (latest){{end}}</option>{{end}}
+    </select>
+    <button>Update now</button>
+  </form>
+  <p class="hint">Installs the selected version at the next check-in, even while updates are paused. Older versions are a rollback.</p>
+</section>
+
+<section class="card">
+  <h2>Settings</h2>
+  <form method="post" action="/devices/{{$dev.ID}}/settings">
+    {{template "csrf" $csrf}}
+    <label>Display name <input name="display_name" value="{{$dev.DisplayName}}" placeholder="{{$dev.Hostname}}"></label>
+    <label>Notes <textarea name="notes" rows="2">{{$dev.Notes}}</textarea></label>
+    <div class="row">
+      <label>Update ring <select name="ring">{{range rings}}<option {{if eq . $dev.Ring}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Pin version <select name="pinned_version"><option value="">– not pinned –</option>{{range $d.Versions}}<option {{if eq .Version $dev.PinnedVersion}}selected{{end}}>{{.Version}}</option>{{end}}</select></label>
+    </div>
+    <label>Offline alert after (hours) <input name="offline_alert_hours" inputmode="numeric" value="{{if $dev.OfflineAlertHours.Valid}}{{$dev.OfflineAlertHours.Int64}}{{end}}" placeholder="default: {{fnum $d.OfflineDefault}} · 0 = never"></label>
+    <label class="check"><input type="checkbox" name="alerts_muted" value="1" {{if $dev.AlertsMuted}}checked{{end}}> Mute e-mail notifications for this device</label>
+    <button class="primary">Save</button>
+  </form>
+</section>
+</div>
+
+{{if $d.UpdateLog}}
+<section class="card">
+  <h2>Agent update log</h2>
+  <table class="compact"><thead><tr><th>Time</th><th>From</th><th>To</th><th>Result</th></tr></thead><tbody>
+  {{range $d.UpdateLog}}<tr><td>{{fmtTime .Time}}</td><td class="mono">{{.From}}</td><td class="mono">{{.To}}</td><td>{{if .Success}}<span class="badge st-ok">ok</span>{{else}}<span class="badge st-critical">failed</span> <span class="small">{{.Error}}</span>{{end}}</td></tr>{{end}}
+  </tbody></table>
+</section>{{end}}
+
+<section class="card">
+  <h2>Collectors</h2>
+  <table class="compact"><thead><tr><th>Collector</th><th>Last run</th><th>Duration</th><th>Status</th></tr></thead><tbody>
+  {{range collectors}}{{$s := index $d.Snaps .}}<tr><td>{{.}}</td>
+    {{if $s}}<td>{{fmtTime $s.CollectedAt}} <span class="muted">({{ago $s.CollectedAt}})</span></td><td>{{$s.DurationMs}} ms</td><td>{{if $s.Error}}<span class="err-text small">{{$s.Error}}</span>{{else if $s.Warnings}}<span class="warn-text small">{{len $s.Warnings}} warning(s)</span>{{else}}ok{{end}}</td>
+    {{else}}<td colspan="3" class="muted">not collected yet</td>{{end}}</tr>{{end}}
+  </tbody></table>
+</section>
+
+<section class="card danger">
+  <h2>Remove device</h2>
+  <p><b>Revoke</b> stops the agent from reporting (it is not uninstalled; uninstall it via "Apps &amp; features" or <code>inventory-agent uninstall</code>). Reinstalling the agent enrolls the device again.
+  <b>Delete</b> also removes all collected data.</p>
+  <div class="row">
+    {{if $dev.RevokedAt.IsZero}}<form method="post" action="/devices/{{$dev.ID}}/revoke">{{template "csrf" $csrf}}<button class="danger" data-confirm="Revoke {{$dev.Name}}?">Revoke</button></form>{{end}}
+    <form method="post" action="/devices/{{$dev.ID}}/delete">{{template "csrf" $csrf}}<button class="danger" data-confirm="Delete {{$dev.Name}} and all its data?">Delete</button></form>
+  </div>
+</section>
+{{end}}

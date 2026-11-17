@@ -1,0 +1,40 @@
+{{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}
+<h1>Settings</h1>
+{{template "settingsnav" "updates"}}
+<section class="card">
+  <h2>Update policy</h2>
+  <p>Agents update themselves to the version of their <b>ring</b>. A ring either follows the <i>latest</i> version or stays on an approved version.
+  Typical rollout: put one or two devices into <b>test</b>, leave <b>early</b>/<b>stable</b> on a fixed version and promote it when the new version works.
+  Per device you can also pin a version or trigger an update manually (works while paused).</p>
+  <form method="post" action="/settings/updates">
+    {{template "csrf" $csrf}}
+    <label class="check"><input type="checkbox" name="paused" value="1" {{if $d.Policy.Paused}}checked{{end}}> <b>Pause all automatic updates</b></label>
+    <table class="compact">
+      <thead><tr><th>Ring</th><th>Devices</th><th>Version</th><th></th></tr></thead>
+      <tbody>
+      {{range rings}}{{$ring := .}}{{$cur := index $d.Policy.RingVersions $ring}}
+      <tr><td><b>{{$ring}}</b></td><td>{{index $d.ByRing $ring}}</td>
+        <td><select name="ring_{{$ring}}">
+          <option value="" {{if eq $cur ""}}selected{{end}}>latest{{if $d.Latest}} (currently {{$d.Latest}}){{end}}</option>
+          {{range $d.Versions}}<option value="{{.Version}}" {{if eq .Version $cur}}selected{{end}}>{{.Version}}</option>{{end}}
+        </select></td>
+        <td>{{if and $d.Latest (ne $cur "") (ne $cur $d.Latest)}}<button form="promote-{{$ring}}" class="small">Promote {{$d.Latest}}</button>{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    <button class="primary">Save</button>
+  </form>
+  {{range rings}}<form id="promote-{{.}}" method="post" action="/settings/updates/promote">{{template "csrf" $csrf}}<input type="hidden" name="ring" value="{{.}}"><input type="hidden" name="version" value="{{$d.Latest}}"></form>{{end}}
+</section>
+
+<section class="card">
+  <h2>Available agent versions</h2>
+  <p class="hint">Versions are shipped with the server image and kept in the data volume, so older versions remain available for pinning and rollback.</p>
+  <table class="compact"><thead><tr><th>Version</th><th>Platforms</th><th>Devices</th></tr></thead><tbody>
+  {{range $d.Versions}}<tr><td class="mono">{{.Version}}</td>
+    <td>{{range .Binaries}}<span class="badge {{if not .Signature}}st-warning{{end}}" title="{{if .Signature}}signed{{else}}UNSIGNED – agents refuse to install it as an update{{end}}">{{.OS}}/{{.Arch}}</span> {{end}}</td>
+    <td>{{index $d.ByVersion .Version}}</td></tr>
+  {{else}}<tr><td colspan="3" class="muted">No agent binaries found.</td></tr>{{end}}
+  </tbody></table>
+</section>
+{{end}}

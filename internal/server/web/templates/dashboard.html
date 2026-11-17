@@ -1,0 +1,80 @@
+{{define "content"}}
+{{$d := .Data}}
+<div class="pagehead">
+  <h1>Devices</h1>
+  <div class="stats">
+    <span><b>{{index $d.Counts "total"}}</b> total</span>
+    <span>{{template "online" "online"}} {{index $d.Counts "online"}} online</span>
+    <span>{{template "online" "offline"}} {{add (index $d.Counts "offline") (index $d.Counts "stale")}} offline</span>
+    <span class="st-text-critical">{{index $d.Counts "critical"}} critical</span>
+    <span class="st-text-warning">{{index $d.Counts "warning"}} warning</span>
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/">
+  <input type="search" name="q" value="{{$d.Q}}" placeholder="Search name, OS, IP …">
+  <label class="check"><input type="checkbox" name="problems" value="1" {{if $d.Problems}}checked{{end}} data-autosubmit> Only problems</label>
+  <select name="sort" data-autosubmit>
+    <option value="status" {{if eq $d.Sort "status"}}selected{{end}}>Sort: status</option>
+    <option value="name" {{if eq $d.Sort "name"}}selected{{end}}>Sort: name</option>
+    <option value="seen" {{if eq $d.Sort "seen"}}selected{{end}}>Sort: last seen</option>
+  </select>
+  <button>Filter</button>
+</form>
+
+{{if not $d.Rows}}
+  <div class="card empty">
+    {{if eq (index $d.Counts "total") 0}}
+      <h2>No devices yet</h2>
+      <p>Download an installer under <a href="/settings/install">Settings → Install agents</a> and run it on a client.</p>
+    {{else}}
+      <p>No device matches the filter.</p>
+    {{end}}
+  </div>
+{{else}}
+<form method="post" action="/devices/bulk" id="bulk">
+{{template "csrf" .CSRF}}
+<div class="tablewrap">
+<table class="list">
+  <thead><tr>
+    <th class="cb"><input type="checkbox" data-selectall="ids" aria-label="Select all"></th>
+    <th>Device</th><th>Status</th><th>System disk</th><th>Disks</th><th>Updates</th><th>Last seen</th><th>Agent</th>
+  </tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+  <tr>
+    <td class="cb"><input type="checkbox" name="ids" value="{{.D.ID}}" aria-label="Select {{.D.Name}}"></td>
+    <td><a class="strong" href="/devices/{{.D.ID}}">{{.D.Name}}</a>
+      <div class="sub">{{if ne .D.Name .D.Hostname}}{{.D.Hostname}} · {{end}}{{if .OSName}}{{.OSName}}{{else}}{{.D.OS}}{{end}} · {{.D.Arch}}</div></td>
+    <td>{{template "status" .Overall}}{{if .Alerts}} <a href="/devices/{{.D.ID}}?tab=alerts" class="sub">{{.Alerts}} alert{{if gt .Alerts 1}}s{{end}}</a>{{end}}{{if .D.AlertsMuted}} <span class="sub" title="Notifications muted">🔕</span>{{end}}</td>
+    <td>{{if .SysDisk}}{{template "status" .SysDiskStatus}}
+      <div class="sub">{{.SysDisk.Model}}{{if .SysDisk.Temperature}} · {{deref .SysDisk.Temperature}} °C{{end}}{{if .SysDisk.PercentUsed}} · {{deref .SysDisk.PercentUsed}}% used{{end}}</div>
+      {{else}}<span class="muted">–</span>{{end}}</td>
+    <td>{{if .DiskCount}}{{template "status" .DiskStatus}} <span class="sub">{{.DiskCount}}</span>{{else}}<span class="muted">–</span>{{end}}</td>
+    <td>{{if .UpdatesKnown}}
+        {{if .Pending}}<span class="badge st-warning">{{.Pending}} pending</span>{{else}}<span class="badge st-ok">up to date</span>{{end}}
+        {{if .Security}}<span class="badge st-warning">{{.Security}} security</span>{{end}}
+        {{if .FailedUpdates}}<span class="badge st-critical">{{.FailedUpdates}} failed</span>{{end}}
+        {{if .Reboot}}<span class="badge st-info">reboot</span>{{end}}
+        {{if .SearchError}}<span class="badge st-warning" title="{{.SearchError}}">check failing</span>{{end}}
+      {{else}}<span class="muted">–</span>{{end}}</td>
+    <td>{{template "online" .Online}} <span title="{{fmtTime .D.LastSeenAt}}">{{ago .D.LastSeenAt}}</span></td>
+    <td><span class="mono">{{.D.AgentVersion}}</span><div class="sub">{{.D.Ring}}{{if .D.PinnedVersion}} · pinned{{end}}{{if eq .D.UpdateState "offered"}} · updating{{end}}{{if eq .D.UpdateState "failed"}} · <span class="err-text">update failed</span>{{end}}{{if not .D.RevokedAt.IsZero}} · <span class="err-text">revoked</span>{{end}}</div></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<div class="bulkbar">
+  <span class="muted">With selected:</span>
+  <select name="action" required>
+    <option value="">choose action …</option>
+    <option value="collect">Collect all data now</option>
+    <option value="update">Update agent to latest now</option>
+    {{range rings}}<option value="ring:{{.}}">Move to ring "{{.}}"</option>{{end}}
+  </select>
+  <button>Apply</button>
+</div>
+</form>
+{{end}}
+{{end}}

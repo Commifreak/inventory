@@ -1,0 +1,8 @@
+/dist/
+/data/
+*.exe
+!internal/**/testdata/*.exe
+/release/dev-signing.key
+*.key
+!internal/release/keys/*.pub
+/assets/smartctl/

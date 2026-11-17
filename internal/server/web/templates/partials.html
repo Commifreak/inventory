@@ -1,0 +1,21 @@
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.}}">{{end}}
+
+{{define "status"}}<span class="badge st-{{.}}">{{if eq . "ok"}}OK{{else if eq . "warning"}}Warning{{else if eq . "critical"}}Critical{{else}}Unknown{{end}}</span>{{end}}
+
+{{define "online"}}<span class="dot on-{{.}}" title="{{.}}"></span>{{end}}
+
+{{define "yesno"}}{{if .}}<span class="badge st-ok">yes</span>{{else}}<span class="badge st-warning">no</span>{{end}}{{end}}
+
+{{define "settingsnav"}}
+<nav class="subnav">
+  <a href="/settings/install" {{if eq . "install"}}class="active"{{end}}>Install agents</a>
+  <a href="/settings/updates" {{if eq . "updates"}}class="active"{{end}}>Agent updates</a>
+  <a href="/settings/collection" {{if eq . "collection"}}class="active"{{end}}>Data collection</a>
+  <a href="/settings/alerts" {{if eq . "alerts"}}class="active"{{end}}>Alert rules</a>
+  <a href="/settings/smtp" {{if eq . "smtp"}}class="active"{{end}}>E-mail</a>
+  <a href="/settings/users" {{if eq . "users"}}class="active"{{end}}>Users</a>
+  <a href="/settings/general" {{if eq . "general"}}class="active"{{end}}>General</a>
+</nav>
+{{end}}
+
+{{define "sectionmeta"}}{{if .}}<p class="meta">Collected {{ago .CollectedAt}} ({{fmtTime .CollectedAt}}){{if .Error}} · <span class="err-text">Error: {{.Error}}</span>{{end}}{{range .Warnings}}<br><span class="warn-text">⚠ {{.}}</span>{{end}}</p>{{else}}<p class="meta">Not collected yet.</p>{{end}}{{end}}

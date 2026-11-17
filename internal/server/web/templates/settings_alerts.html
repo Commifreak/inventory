@@ -1,0 +1,40 @@
+{{define "content"}}{{$d := .Data}}
+<h1>Settings</h1>
+{{template "settingsnav" "alerts"}}
+{{if not $d.SMTP}}<div class="flash warn">E-mail is not configured yet – <a href="/settings/smtp">configure SMTP</a> to receive alerts.</div>{{end}}
+<form method="post" action="/settings/alerts">
+{{template "csrf" .CSRF}}
+<section class="card">
+  <h2>Notifications</h2>
+  <label>Recipients <small class="muted">(comma separated)</small> <input name="recipients" value="{{join $d.Settings.Recipients ", "}}" placeholder="you@example.com"></label>
+  <div class="row">
+    <label>Remind about open alerts every (hours, 0 = never) <input name="renotify_hours" inputmode="numeric" class="short" value="{{$d.Settings.RenotifyHours}}"></label>
+    <label class="check"><input type="checkbox" name="notify_resolved" value="1" {{if $d.Settings.NotifyResolved}}checked{{end}}> Notify when an alert is resolved</label>
+  </div>
+</section>
+
+{{range $g := $d.Groups}}
+<section class="card">
+  <h2>{{$g}}</h2>
+  <div class="tablewrap"><table class="compact rules">
+    <thead><tr><th>On</th><th>Rule</th><th>Parameters</th><th>Severity</th><th>Recipients <small class="muted">(optional override)</small></th></tr></thead>
+    <tbody>
+    {{range $d.Catalog}}{{if eq .Group $g}}{{$rc := index $d.Settings.Rules .ID}}{{$id := .ID}}
+    <tr>
+      <td><input type="checkbox" name="en_{{.ID}}" value="1" {{if $rc.Enabled}}checked{{end}} aria-label="enable {{.Title}}"></td>
+      <td><b>{{.Title}}</b><div class="sub">{{.Description}}</div></td>
+      <td class="nowrap">
+        {{range .Params}}<label class="inline">{{.Label}} <input name="p_{{$id}}_{{.Key}}" class="tiny" inputmode="decimal" value="{{fnum (index $rc.Params .Key)}}"> {{.Unit}}</label><br>{{end}}
+        {{if .DiskScope}}<label class="check small"><input type="checkbox" name="sys_{{.ID}}" value="1" {{if $rc.SystemDiskOnly}}checked{{end}}> system disk only</label>{{end}}
+      </td>
+      <td><select name="sev_{{.ID}}"><option value="warning" {{if eq $rc.Severity "warning"}}selected{{end}}>warning</option><option value="critical" {{if eq $rc.Severity "critical"}}selected{{end}}>critical</option></select></td>
+      <td><input name="rcpt_{{.ID}}" value="{{join $rc.Recipients ", "}}" placeholder="default"></td>
+    </tr>
+    {{end}}{{end}}
+    </tbody>
+  </table></div>
+</section>
+{{end}}
+<div class="stickybar"><button class="primary">Save alert rules</button></div>
+</form>
+{{end}}

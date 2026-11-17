@@ -1,0 +1,34 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · {{.Instance}}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css?v={{.Version}}">
+<script src="/static/app.js?v={{.Version}}" defer></script>
+</head>
+<body>
+{{if .User}}
+<header class="top">
+  <a class="brand" href="/"><img src="/static/favicon.svg" alt="" width="22" height="22"> {{.Instance}}</a>
+  <nav>
+    <a href="/" {{if eq .Nav "devices"}}class="active"{{end}}>Devices</a>
+    <a href="/alerts" {{if eq .Nav "alerts"}}class="active"{{end}}>Alerts</a>
+    <a href="/settings/install" {{if eq .Nav "settings"}}class="active"{{end}}>Settings</a>
+  </nav>
+  <div class="user">
+    <span class="muted">{{.User.Username}}</span>
+    {{if .User.PasswordHash}}<a href="/account/password">Password</a>{{end}}
+    <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>
+  </div>
+</header>
+{{end}}
+<main class="{{if not .User}}narrow{{end}}">
+  {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}
+  {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
+  {{template "content" .}}
+</main>
+<footer class="muted">Inventory {{.Version}}</footer>
+</body>
+</html>{{end}}

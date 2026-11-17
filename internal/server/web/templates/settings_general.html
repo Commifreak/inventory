@@ -1,0 +1,34 @@
+{{define "content"}}{{$d := .Data}}
+<h1>Settings</h1>
+{{template "settingsnav" "general"}}
+<div class="grid">
+<section class="card">
+  <h2>General</h2>
+  <form method="post" action="/settings/general">
+    {{template "csrf" .CSRF}}
+    <label>Instance name <small class="muted">(page title, mail subject prefix)</small> <input name="instance_name" value="{{$d.General.InstanceName}}" maxlength="60"></label>
+    <label>Keep history for (days) <input name="retention_days" inputmode="numeric" class="short" value="{{$d.General.RetentionDays}}"></label>
+    <button class="primary">Save</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Server</h2>
+  <dl>
+    <dt>Version</dt><dd class="mono">{{$d.Config.Version}}</dd>
+    <dt>Public URL</dt><dd class="mono">{{$d.BaseURL}}{{if not $d.Config.BaseURL}} <span class="warn-text">(derived – set BASE_URL)</span>{{end}}</dd>
+    <dt>Time zone</dt><dd>{{$d.TZ}} <span class="muted">(TZ)</span></dd>
+    <dt>Data directory</dt><dd class="mono">{{$d.Config.DataDir}}</dd>
+    <dt>Local login</dt><dd>{{if $d.Config.LocalLogin}}enabled{{else}}disabled{{end}}</dd>
+    <dt>Single sign-on</dt><dd>{{if $d.Config.OIDC.Enabled}}{{$d.Config.OIDC.Issuer}}{{if $d.Config.OIDC.AdminGroup}} <span class="muted">(group {{$d.Config.OIDC.AdminGroup}})</span>{{end}}{{else}}<span class="muted">not configured</span>{{end}}</dd>
+  </dl>
+  <p class="hint">Back up the data directory regularly. It contains the database and the encryption key (<code>secrets/</code>).</p>
+</section>
+</div>
+<section class="card">
+  <h2>Audit log</h2>
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+    <tbody>{{range $d.Audit}}<tr><td class="nowrap">{{fmtTime .Time}}</td><td>{{.Username}}</td><td class="mono small">{{.Action}}</td><td class="small">{{.Details}}</td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}

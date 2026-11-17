@@ -1,0 +1,17 @@
+{{define "content"}}
+<div class="card login">
+  <h1><img src="/static/favicon.svg" alt="" width="28" height="28"> {{.Instance}}</h1>
+  {{if .Local}}
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{.Data.Next}}">
+    <label>User name <input name="username" autocomplete="username" required autofocus></label>
+    <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="primary wide">Sign in</button>
+  </form>
+  {{end}}
+  {{if .OIDC}}
+  {{if .Local}}<div class="sep"><span>or</span></div>{{end}}
+  <a class="button wide" href="/auth/oidc/login?next={{.Data.Next}}">{{.OIDCName}}</a>
+  {{end}}
+</div>
+{{end}}

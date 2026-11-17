@@ -1,0 +1,36 @@
+{{define "content"}}{{$d := .Data}}{{$c := $d.SMTP}}
+<h1>Settings</h1>
+{{template "settingsnav" "smtp"}}
+<div class="grid">
+<section class="card">
+  <h2>SMTP server</h2>
+  <form method="post" action="/settings/smtp">
+    {{template "csrf" .CSRF}}
+    <div class="row">
+      <label class="grow">Host <input name="host" value="{{$c.Host}}" placeholder="smtp.example.com"></label>
+      <label>Port <input name="port" inputmode="numeric" class="short" value="{{$c.Port}}"></label>
+    </div>
+    <label>Encryption <select name="security">
+      <option value="starttls" {{if eq $c.Security "starttls"}}selected{{end}}>STARTTLS (port 587)</option>
+      <option value="tls" {{if eq $c.Security "tls"}}selected{{end}}>TLS / SMTPS (port 465)</option>
+      <option value="none" {{if eq $c.Security "none"}}selected{{end}}>none (port 25, local relays only)</option>
+    </select></label>
+    <label>User name <input name="username" value="{{$c.Username}}" autocomplete="off"></label>
+    <label>Password <input type="password" name="password" autocomplete="new-password" placeholder="{{if $c.PasswordEnc}}•••••• (unchanged){{end}}"></label>
+    {{if $c.PasswordEnc}}<label class="check small"><input type="checkbox" name="clear_password" value="1"> remove stored password</label>{{end}}
+    <label>Sender address <input name="from" value="{{$c.From}}" placeholder="Inventory &lt;inventory@example.com&gt;"></label>
+    <button class="primary">Save</button>
+  </form>
+  <p class="hint">The password is stored encrypted with the key in the data volume.</p>
+</section>
+<section class="card">
+  <h2>Test</h2>
+  <form method="post" action="/settings/smtp/test">
+    {{template "csrf" .CSRF}}
+    <label>Send a test mail to <input name="to" value="{{$d.Recipients}}" placeholder="you@example.com"></label>
+    <button>Send test mail</button>
+  </form>
+  <p class="hint">Recipients of alert mails are configured under <a href="/settings/alerts">Alert rules</a>.</p>
+</section>
+</div>
+{{end}}
