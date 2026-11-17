@@ -124,6 +124,7 @@ func sampleReport(now time.Time) protocol.Report {
 		protocol.CollectAutostart: {CollectedAt: now, Data: protocol.AutostartData{Items: []protocol.AutostartItem{{Name: "OneDrive", Command: "onedrive.exe /background", Location: `HKCU\Run`, Enabled: true}}}},
 		protocol.CollectEvents: {CollectedAt: now, Data: protocol.EventsData{Since: now.Add(-24 * time.Hour), Events: []protocol.CriticalEvent{
 			{Kind: protocol.EventBluescreen, Time: now.Add(-2 * time.Hour), Source: "BugCheck", EventID: 1001, Message: "The computer has rebooted from a bugcheck.", Key: "rec1"},
+			{Kind: protocol.EventUndervoltage, Time: now.Add(-3 * time.Hour), Source: "kernel", Message: "hwmon hwmon1: Undervoltage detected!", Key: "uv1"},
 		}}},
 	}}
 }
@@ -237,7 +238,7 @@ func TestEndToEnd(t *testing.T) {
 	for _, a := range open {
 		rules[a.Rule] = true
 	}
-	for _, want := range []string{"smart_reallocated", "disk_space", "defender_off", "secureboot_certs", "updates_failed", "bluescreen", "os_eol"} {
+	for _, want := range []string{"smart_reallocated", "disk_space", "defender_off", "secureboot_certs", "updates_failed", "bluescreen", "os_eol", "undervoltage"} {
 		if !rules[want] {
 			t.Errorf("expected alert %s, open: %v", want, rules)
 		}

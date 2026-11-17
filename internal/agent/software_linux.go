@@ -235,12 +235,16 @@ var (
 		regexp.MustCompile(`(mmc\d+): (?:[Tt]imeout waiting for hardware (?:interrupt|cmd interrupt)|Card stuck|cmd ?\d+ (?:timeout|error)|Controller never released|error -\d+ whilst)`),
 	}
 	ignoreDev = regexp.MustCompile(`^(loop|sr|fd|ram|zram)\d*`)
+	// Raspberry Pi: "hwmon hwmon1: Undervoltage detected!" (current kernels)
+	// or "Under-voltage detected! (0x00050005)" (older firmware drivers).
+	undervoltRe = regexp.MustCompile(`(?i)under-?voltage detected`)
 )
 
 // kmsg is one kernel log line.
 type kmsg struct {
 	t   time.Time
 	msg string
+	src string // "journal" or "dmesg"
 }
 
 // collectEventsLinux scans the kernel log. It merges the systemd journal
@@ -306,7 +310,7 @@ func parseDmesgISO(out string) []kmsg {
 		if err != nil {
 			continue
 		}
-		recs = append(recs, kmsg{t, strings.TrimSpace(msg)})
+		recs = append(recs, kmsg{t, strings.TrimSpace(msg), "dmesg"})
 	}
 	return recs
 }
@@ -324,7 +328,7 @@ func parseDmesgRaw(out string, boot time.Time) []kmsg {
 			continue
 		}
 		sec, _ := strconv.ParseInt(m[1], 10, 64)
-		recs = append(recs, kmsg{boot.Add(time.Duration(sec) * time.Second), m[3]})
+		recs = append(recs, kmsg{boot.Add(time.Duration(sec) * time.Second), m[3], "dmesg"})
 	}
 	return recs
 }
@@ -341,7 +345,7 @@ func journalRecords(lines []string) []kmsg {
 		}
 		tsStr, _ := rec["__REALTIME_TIMESTAMP"].(string)
 		us, _ := strconv.ParseInt(tsStr, 10, 64)
-		recs = append(recs, kmsg{time.UnixMicro(us), journalString(rec["MESSAGE"])})
+		recs = append(recs, kmsg{time.UnixMicro(us), journalString(rec["MESSAGE"]), "journal"})
 	}
 	return recs
 }
@@ -361,16 +365,17 @@ func parseKernelRecords(recs []kmsg) []protocol.CriticalEvent {
 		count int
 	}
 	groups := map[string]*group{}
-	seenLine := map[string]bool{}
+	seenLine := map[string]string{} // line key -> source that delivered it
 	var order []string
 	for _, r := range recs {
 		msg, ts := r.msg, r.t
-		// journal and dmesg timestamps differ slightly: dedupe per minute and text.
+		// The same line may come from journal and dmesg (with slightly different
+		// timestamps): skip it if the other source already delivered it.
 		lineKey := fmt.Sprintf("%d|%s", ts.Unix()/60, msg)
-		if seenLine[lineKey] {
+		if src, ok := seenLine[lineKey]; ok && src != r.src {
 			continue
 		}
-		seenLine[lineKey] = true
+		seenLine[lineKey] = r.src
 		if m := oomRe.FindStringSubmatch(msg); m != nil {
 			proc := m[2]
 			if proc == "" {
@@ -379,6 +384,16 @@ func parseKernelRecords(recs []kmsg) []protocol.CriticalEvent {
 			key := fmt.Sprintf("oom|%d|%s", ts.Unix()/60, proc)
 			if _, ok := groups[key]; !ok {
 				groups[key] = &group{ev: protocol.CriticalEvent{Kind: protocol.EventOOM, Time: ts, Source: "kernel", Message: truncateStr(msg, 500), Key: key}}
+				order = append(order, key)
+			}
+			continue
+		}
+		if undervoltRe.MatchString(msg) {
+			key := fmt.Sprintf("uv|%d", ts.Unix()/60)
+			if g, ok := groups[key]; ok {
+				g.count++
+			} else {
+				groups[key] = &group{ev: protocol.CriticalEvent{Kind: protocol.EventUndervoltage, Time: ts, Source: "kernel", Message: truncateStr(msg, 500), Key: key}, count: 1}
 				order = append(order, key)
 			}
 			continue

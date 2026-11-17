@@ -18,6 +18,8 @@ type SystemInfo struct {
 	Users    UsersInfo    `json:"users"`
 	Security SecurityInfo `json:"security"`
 	Battery  []Battery    `json:"battery,omitempty"`
+	// PiPower is set on Raspberry Pi boards.
+	PiPower *PiPowerInfo `json:"pi_power,omitempty"`
 }
 
 type OSInfo struct {
@@ -133,6 +135,22 @@ type ActivationInfo struct {
 type TPMInfo struct {
 	Present bool   `json:"present"`
 	Version string `json:"version,omitempty"`
+}
+
+// PiPowerInfo is the Raspberry Pi firmware throttling state
+// ("vcgencmd get_throttled"). "Now" flags describe the current state,
+// "SinceBoot" flags whether it happened since the last boot.
+type PiPowerInfo struct {
+	Source                 string `json:"source"` // "vcgencmd" or "hwmon"
+	Raw                    string `json:"raw,omitempty"`
+	UndervoltageNow        bool   `json:"undervoltage_now"`
+	UndervoltageSinceBoot  bool   `json:"undervoltage_since_boot"`
+	ThrottledNow           bool   `json:"throttled_now"`
+	ThrottledSinceBoot     bool   `json:"throttled_since_boot"`
+	FreqCappedNow          bool   `json:"freq_capped_now"`
+	FreqCappedSinceBoot    bool   `json:"freq_capped_since_boot"`
+	SoftTempLimitNow       bool   `json:"soft_temp_limit_now"`
+	SoftTempLimitSinceBoot bool   `json:"soft_temp_limit_since_boot"`
 }
 
 type Battery struct {
@@ -301,6 +319,8 @@ const (
 	EventBluescreen = "bluescreen"
 	EventDiskError  = "disk_error"
 	EventOOM        = "oom"
+	// EventUndervoltage: Raspberry Pi power supply voltage too low.
+	EventUndervoltage = "undervoltage"
 )
 
 type CriticalEvent struct {

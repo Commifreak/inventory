@@ -93,7 +93,10 @@ software 12 h, autostart 12 h, events 4 h.
   51, 52, 153; Ntfs 55; stornvme/storahci 129); Linux kernel log from the
   journal merged with `dmesg` (works with volatile journals/log2ram and without
   journald): I/O and file system errors, SD card/eMMC errors (`mmc`/`mmcblk`),
-  USB SSD resets, OOM kills; macOS kernel panics.
+  USB SSD resets, OOM kills, Raspberry Pi undervoltage; macOS kernel panics.
+- **Raspberry Pi power:** throttling state from `vcgencmd get_throttled`
+  (undervoltage, throttling, frequency capping, soft temperature limit – now
+  and since boot), fallback to the `rpi_volt` hwmon alarm.
 - **SD cards / eMMC:** listed in the disk view (no SMART); eMMC life time
   estimates and pre-EOL state are reported.
 
@@ -110,7 +113,8 @@ NVMe critical, low disk space, update failed, updates pending too long, update
 check failing, reboot pending too long, OS end of support (endoflife.date, cached,
 built-in Windows fallback), Defender off, Defender signatures old, Secure Boot
 2023 certificates missing, not activated, system drive not encrypted (off by
-default), battery worn (off by default), bluescreen, disk errors, OOM.
+default), battery worn (off by default), bluescreen, disk errors, OOM,
+undervoltage (Raspberry Pi; kernel events or undervoltage present right now).
 
 Notifications: one mail per device and evaluation with new/still open/resolved
 alerts, reminders every N hours (default 24), optional resolve mails, per-device mute.

@@ -171,6 +171,7 @@ func collectSystemLinux(ctx context.Context, _ *State) (any, []string, error) {
 		info.Security.TPM = &protocol.TPMInfo{Present: false}
 	}
 	info.Battery = linuxBatteries()
+	info.PiPower = piPower(ctx, "/sys/class/hwmon")
 	return info, warns, nil
 }
 
@@ -670,4 +671,39 @@ func mmcDisks(sysBlock, sysPath string) []protocol.Disk {
 		out = append(out, d)
 	}
 	return out
+}
+
+// piPower reads the Raspberry Pi throttling state: "vcgencmd get_throttled"
+// if available, otherwise the rpi_volt hwmon alarm (current state only).
+func piPower(ctx context.Context, hwmonDir string) *protocol.PiPowerInfo {
+	if hasCmd("vcgencmd") {
+		if out, err := runCmd(ctx, "vcgencmd", "get_throttled"); err == nil {
+			if p := parseThrottled(out); p != nil {
+				return p
+			}
+		}
+	}
+	dirs, _ := filepath.Glob(filepath.Join(hwmonDir, "hwmon*"))
+	for _, d := range dirs {
+		if readTrim(filepath.Join(d, "name")) == "rpi_volt" {
+			return &protocol.PiPowerInfo{Source: "hwmon", UndervoltageNow: readTrim(filepath.Join(d, "in0_lcrit_alarm")) == "1"}
+		}
+	}
+	return nil
+}
+
+// parseThrottled decodes "throttled=0x50005".
+func parseThrottled(out string) *protocol.PiPowerInfo {
+	_, v, ok := strings.Cut(strings.TrimSpace(out), "=")
+	if !ok {
+		return nil
+	}
+	n, err := strconv.ParseUint(strings.TrimPrefix(strings.ToLower(v), "0x"), 16, 32)
+	if err != nil {
+		return nil
+	}
+	bit := func(i uint) bool { return n&(1<<i) != 0 }
+	return &protocol.PiPowerInfo{Source: "vcgencmd", Raw: v,
+		UndervoltageNow: bit(0), FreqCappedNow: bit(1), ThrottledNow: bit(2), SoftTempLimitNow: bit(3),
+		UndervoltageSinceBoot: bit(16), FreqCappedSinceBoot: bit(17), ThrottledSinceBoot: bit(18), SoftTempLimitSinceBoot: bit(19)}
 }

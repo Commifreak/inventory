@@ -255,3 +255,34 @@ func TestMMCDisks(t *testing.T) {
 		t.Fatalf("emmc: %+v", emmc)
 	}
 }
+
+func TestUndervoltage(t *testing.T) {
+	boot := time.Date(2026, 11, 17, 6, 0, 0, 0, time.UTC)
+	recs := parseDmesgRaw("[   10.000000] hwmon hwmon1: Undervoltage detected!\n"+
+		"[   12.000000] hwmon hwmon1: Undervoltage detected!\n"+
+		"[   20.000000] hwmon hwmon1: Voltage normalised\n"+
+		"[  400.000000] Under-voltage detected! (0x00050005)\n", boot)
+	evs := parseKernelRecords(recs)
+	if len(evs) != 2 || evs[0].Kind != protocol.EventUndervoltage || !strings.Contains(evs[0].Message, "+1 similar") {
+		t.Fatalf("unexpected %+v", evs)
+	}
+
+	p := parseThrottled("throttled=0x50005\n")
+	if p == nil || !p.UndervoltageNow || !p.ThrottledNow || !p.UndervoltageSinceBoot || !p.ThrottledSinceBoot || p.FreqCappedNow || p.SoftTempLimitSinceBoot {
+		t.Fatalf("throttled: %+v", p)
+	}
+	if p := parseThrottled("throttled=0x0"); p == nil || p.UndervoltageNow || p.UndervoltageSinceBoot {
+		t.Fatalf("throttled zero: %+v", p)
+	}
+
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, "hwmon2"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "hwmon2", "name"), []byte("rpi_volt\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "hwmon2", "in0_lcrit_alarm"), []byte("1\n"), 0o644)
+	if hasCmd("vcgencmd") {
+		t.Skip("vcgencmd present")
+	}
+	if p := piPower(context.Background(), dir); p == nil || p.Source != "hwmon" || !p.UndervoltageNow {
+		t.Fatalf("hwmon: %+v", p)
+	}
+}

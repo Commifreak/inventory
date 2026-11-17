@@ -132,6 +132,21 @@
     <td class="mono small">{{range $i, $ip := .IPs}}{{if $i}}<br>{{end}}{{$ip}}{{end}}{{if isSet .DHCP}}<div class="sub">{{if derefB .DHCP}}DHCP{{else}}static{{end}}</div>{{end}}</td><td class="mono small">{{.MAC}}</td></tr>{{end}}
   </tbody></table>
 </section>
+{{with .PiPower}}
+<section class="card">
+  <h2>Power (Raspberry Pi)</h2>
+  <table class="compact"><thead><tr><th></th><th>Now</th><th>Since boot</th></tr></thead><tbody>
+    <tr><td>Undervoltage</td><td>{{if .UndervoltageNow}}<span class="badge st-critical">yes</span>{{else}}<span class="badge st-ok">no</span>{{end}}</td>
+      <td>{{if eq .Source "vcgencmd"}}{{if .UndervoltageSinceBoot}}<span class="badge st-warning">yes</span>{{else}}<span class="badge st-ok">no</span>{{end}}{{else}}–{{end}}</td></tr>
+    {{if eq .Source "vcgencmd"}}
+    <tr><td>Throttled</td><td>{{if .ThrottledNow}}<span class="badge st-warning">yes</span>{{else}}no{{end}}</td><td>{{if .ThrottledSinceBoot}}<span class="badge st-warning">yes</span>{{else}}no{{end}}</td></tr>
+    <tr><td>Frequency capped</td><td>{{if .FreqCappedNow}}<span class="badge st-warning">yes</span>{{else}}no{{end}}</td><td>{{if .FreqCappedSinceBoot}}yes{{else}}no{{end}}</td></tr>
+    <tr><td>Soft temperature limit</td><td>{{if .SoftTempLimitNow}}<span class="badge st-warning">yes</span>{{else}}no{{end}}</td><td>{{if .SoftTempLimitSinceBoot}}yes{{else}}no{{end}}</td></tr>
+    {{end}}
+  </tbody></table>
+  <p class="hint">Source: {{.Source}}{{if .Raw}} (throttled={{.Raw}}){{end}}. Undervoltage events are also recorded in the Events tab.</p>
+</section>
+{{end}}
 {{if .Battery}}
 <section class="card">
   <h2>Battery</h2>
@@ -287,10 +302,10 @@
   <div class="tablewrap"><table class="compact">
     <thead><tr><th>Time</th><th>Kind</th><th>Source</th><th>Message</th></tr></thead>
     <tbody>{{range $d.Events}}<tr><td class="nowrap">{{fmtTime .Time}}</td>
-      <td>{{if eq .Kind "bluescreen"}}<span class="badge st-critical">bluescreen</span>{{else if eq .Kind "disk_error"}}<span class="badge st-warning">disk error</span>{{else if eq .Kind "oom"}}<span class="badge st-warning">out of memory</span>{{else}}{{.Kind}}{{end}}</td>
+      <td>{{if eq .Kind "bluescreen"}}<span class="badge st-critical">bluescreen</span>{{else if eq .Kind "disk_error"}}<span class="badge st-warning">disk error</span>{{else if eq .Kind "oom"}}<span class="badge st-warning">out of memory</span>{{else if eq .Kind "undervoltage"}}<span class="badge st-warning">undervoltage</span>{{else}}{{.Kind}}{{end}}</td>
       <td class="sub">{{.Source}}{{if .EventID}} · {{.EventID}}{{end}}{{if .Disk}} · {{.Disk}}{{end}}</td><td class="small break">{{.Message}}</td></tr>{{end}}</tbody>
   </table></div>
-  {{else}}<p class="muted">No bluescreens, disk errors or out-of-memory events recorded.</p>{{end}}
+  {{else}}<p class="muted">No bluescreens, disk errors, undervoltage or out-of-memory events recorded.</p>{{end}}
 </section>
 {{end}}
 

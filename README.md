@@ -18,7 +18,7 @@ inventory and e-mail alerts, in one Docker container.
 | System | OS and build, end of support, hardware, volumes, network (IPs, gateway, DNS, Wi-Fi), last logons and administrators |
 | Security | Defender (incl. passive mode), Secure Boot and the 2023 UEFI CA certificates, TPM, activation, BitLocker / LUKS / FileVault, battery health |
 | Autostart | Run keys, startup folders, scheduled tasks, services · systemd, cron @reboot, XDG · launchd |
-| Events | Bluescreens / kernel panics, disk errors, out-of-memory kills |
+| Events | Bluescreens / kernel panics, disk and SD card errors, out-of-memory kills, Raspberry Pi undervoltage |
 
 Alerts (SMTP) are rule based and configurable in the UI: SMART failures and
 thresholds, low disk space, failed or long pending updates, pending reboots,

@@ -91,6 +91,8 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevCritical, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
 	{ID: "disk_errors", Group: "Events", Title: "Disk errors in system log", Description: "I/O, SD card/eMMC or file system errors logged within the given time.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}, {"min", "At least", "events", 1}}},
+	{ID: "undervoltage", Group: "Events", Title: "Undervoltage (Raspberry Pi)", Description: "The power supply voltage dropped too low within the given time, or is too low right now. Undervoltage corrupts SD cards.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
 	{ID: "oom", Group: "Events", Title: "Out of memory", Description: "The kernel killed processes because memory ran out (Linux).",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"hours", "Within", "hours", 24}}},
 }
@@ -373,6 +375,7 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 		{"bluescreen", protocol.EventBluescreen, "bluescreen(s)"},
 		{"disk_errors", protocol.EventDiskError, "disk error event(s)"},
 		{"oom", protocol.EventOOM, "out-of-memory kill(s)"},
+		{"undervoltage", protocol.EventUndervoltage, "undervoltage event(s)"},
 	} {
 		rc, on := rule(it.rule)
 		if !on {
@@ -388,8 +391,15 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 		if min < 1 {
 			min = 1
 		}
-		if float64(n) >= min {
-			ev.add(rc, it.rule, "", "%d %s in the last %.0f hours.", n, it.label, hours)
+		switch {
+		case float64(n) >= min:
+			msg := fmt.Sprintf("%d %s in the last %.0f hours.", n, it.label, hours)
+			if it.rule == "undervoltage" && sysOK && sys.PiPower != nil && sys.PiPower.UndervoltageNow {
+				msg += " Undervoltage is present right now."
+			}
+			ev.add(rc, it.rule, "", "%s", msg)
+		case it.rule == "undervoltage" && sysOK && sys.PiPower != nil && sys.PiPower.UndervoltageNow:
+			ev.add(rc, it.rule, "", "Undervoltage is present right now (%s). Check the power supply and cable.", sys.PiPower.Source)
 		}
 	}
 	return ev

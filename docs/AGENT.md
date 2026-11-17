@@ -83,7 +83,10 @@ new version does not come up and check in, the previous binary is restored.
   disks; the agent falls back to the Windows storage API (less detail).
 - *Raspberry Pi / SD cards*: SD cards have no SMART. They are listed in the
   Disks tab; read/write errors are detected from the kernel log (journal and
-  `dmesg`) and raise the "Disk errors in system log" alert.
+  `dmesg`) and raise the "Disk errors in system log" alert. Undervoltage (the
+  most common cause of corrupted SD cards) is recorded as an event, the
+  firmware throttling state is shown on the Overview tab, and the
+  "Undervoltage (Raspberry Pi)" alert fires.
 - *Wi-Fi name missing on Windows 11 24H2+*: Windows only reveals the SSID with
   location services enabled.
 - *Update searches fail*: shown as "check failing" with the Windows Update
