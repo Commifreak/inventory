@@ -101,6 +101,10 @@ func TestAgentLifecycle(t *testing.T) {
 	if err := a2.checkPendingUpdate(); err != nil {
 		t.Fatal(err)
 	}
+	a2.resetOnVersionChange()
+	if len(a2.state.LastRun) != 0 || a2.state.AgentVersion != newVersion {
+		t.Fatalf("new version must collect everything: %+v", a2.state.LastRun)
+	}
 	if a2.state.UpdateResult == nil || !a2.state.UpdateResult.Success {
 		t.Fatalf("update result: %+v", a2.state.UpdateResult)
 	}

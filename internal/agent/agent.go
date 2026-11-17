@@ -52,7 +52,23 @@ func Run(ctx context.Context, log *slog.Logger) error {
 	if err := a.checkPendingUpdate(); err != nil {
 		return err
 	}
+	a.resetOnVersionChange()
 	return a.loop(ctx)
+}
+
+// resetOnVersionChange makes a new agent version (update, rollback,
+// reinstall) collect and send everything right away, so data from new or
+// fixed collectors shows up immediately instead of after the intervals.
+func (a *Agent) resetOnVersionChange() {
+	if a.state.AgentVersion == Version {
+		return
+	}
+	if a.state.AgentVersion != "" {
+		a.log.Info("agent version changed, collecting all data", "from", a.state.AgentVersion, "to", Version)
+	}
+	a.state.AgentVersion = Version
+	a.state.LastRun = map[string]time.Time{}
+	_ = SaveState(a.state)
 }
 
 // ErrRestart asks the caller to exit so the service manager restarts the agent.

@@ -34,6 +34,9 @@ type State struct {
 	EventsSince   time.Time              `json:"events_since,omitempty"`
 	LastCheckin   time.Time              `json:"last_checkin,omitempty"`
 	LastError     string                 `json:"last_error,omitempty"`
+	// AgentVersion is the version that last wrote the state; a change
+	// (update, rollback, reinstall) triggers a full collection.
+	AgentVersion string `json:"agent_version,omitempty"`
 }
 
 // PendingUpdate tracks an update across the restart.
