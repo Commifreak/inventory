@@ -218,6 +218,16 @@ func TestAddonSystemDisk(t *testing.T) {
 		t.Fatalf("haosDisk via label = %q", got)
 	}
 
+	// smartctl denied: model and size from sysfs, hint about the protection mode.
+	_ = os.WriteFile(filepath.Join(dev, "size"), []byte("976773168\n"), 0o644)
+	_ = os.MkdirAll(filepath.Join(dev, "device"), 0o755)
+	_ = os.WriteFile(filepath.Join(dev, "device", "vendor"), []byte("Samsung \n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dev, "device", "model"), []byte("Portable SSD T7   \n"), 0o644)
+	denied := []protocol.Disk{{Device: "/dev/sda", Messages: []string{"Smartctl open device: /dev/sda [SAT] failed: Operation not permitted"}}}
+	if !addonFillFromSysfs(denied, cls) || denied[0].Model != "Samsung Portable SSD T7" || denied[0].SizeBytes != 976773168*512 {
+		t.Fatalf("sysfs fallback: %+v", denied[0])
+	}
+
 	// USB SSD with the HAOS partitions next to an empty SD slot and a second USB disk.
 	disks := []protocol.Disk{{Device: "/dev/sdb", External: true}, {Device: "/dev/sda", External: true, Bus: "USB"}}
 	markAddonSystemDisk(disks, "sda")

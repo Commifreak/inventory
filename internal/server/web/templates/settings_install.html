@@ -32,7 +32,7 @@
 
   {{if $d.HAAddonRepo}}
   <h3>Home Assistant OS</h3>
-  <p class="hint">Install the agent as a Home Assistant add-on (Raspberry Pi, x86): add the add-on repository, install <b>Inventory Agent</b>, enter the server URL and token below in its configuration and start it. Updates arrive as add-on updates.</p>
+  <p class="hint">Install the agent as a Home Assistant add-on (Raspberry Pi, x86): add the add-on repository, install <b>Inventory Agent</b>, enter the server URL and token below in its configuration and start it. For SMART of SSDs/HDDs turn off the add-on's <i>Protection mode</i>. Updates arrive as add-on updates.</p>
   <div class="row wrap">
     <a class="button" href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url={{urlquery $d.HAAddonRepo}}" target="_blank" rel="noopener">Add repository to Home Assistant</a>
   </div>

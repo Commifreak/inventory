@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -492,7 +493,37 @@ func collectSmartAddon(ctx context.Context, st *State) (any, []string, error) {
 	}
 	sd := v.(protocol.SmartData)
 	markAddonSystemDisk(sd.Disks, haosDisk(addonSysBlock, addonDevDir))
+	if addonFillFromSysfs(sd.Disks, addonSysBlock) {
+		// Device access is denied while the add-on runs in protection mode:
+		// full_access only applies to unprotected add-ons.
+		warns = append(warns, "SMART access denied: turn off the Protection mode of the Inventory Agent add-on in Home Assistant (Settings → Add-ons → Inventory Agent) and restart it")
+	}
 	return sd, warns, nil
+}
+
+// addonFillFromSysfs completes disks that smartctl could not open with
+// model and size from sysfs. It reports whether access was denied.
+func addonFillFromSysfs(disks []protocol.Disk, sysBlock string) (denied bool) {
+	for i := range disks {
+		d := &disks[i]
+		for _, m := range d.Messages {
+			if strings.Contains(m, "Operation not permitted") || strings.Contains(m, "Permission denied") {
+				denied = true
+			}
+		}
+		name := strings.TrimPrefix(d.Device, "/dev/")
+		if d.Model == "" {
+			vendor := readTrim(filepath.Join(sysBlock, name, "device", "vendor"))
+			model := readTrim(filepath.Join(sysBlock, name, "device", "model"))
+			d.Model = strings.TrimSpace(strings.TrimSpace(vendor) + " " + strings.TrimSpace(model))
+		}
+		if d.SizeBytes == 0 {
+			if sectors, err := strconv.ParseUint(readTrim(filepath.Join(sysBlock, name, "size")), 10, 64); err == nil {
+				d.SizeBytes = sectors * 512
+			}
+		}
+	}
+	return denied
 }
 
 // Paths for haosDisk (relocatable for tests).
