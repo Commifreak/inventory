@@ -128,8 +128,14 @@ func collectSystemLinux(ctx context.Context, _ *State) (any, []string, error) {
 		Board:        strings.TrimSpace(readTrim("/sys/class/dmi/id/board_vendor") + " " + readTrim("/sys/class/dmi/id/board_name")),
 		CPUThreads:   runtime.NumCPU(),
 	}
-	if m := readTrim("/proc/device-tree/model"); m != "" && hw.Model == "" {
+	if m := strings.Trim(readTrim("/proc/device-tree/model"), "\x00 "); m != "" && hw.Model == "" {
 		hw.Model = m // Raspberry Pi and other boards
+	}
+	if hw.Model == "" {
+		hw.Model = cpuInfoBoard()
+	}
+	if hw.Manufacturer == "" && strings.HasPrefix(hw.Model, "Raspberry Pi") {
+		hw.Manufacturer = "Raspberry Pi"
 	}
 	cpu, cores, serial := parseCPUInfo()
 	hw.CPU, hw.CPUCores = cpu, cores
@@ -215,19 +221,54 @@ func parseCPUInfo() (model string, cores int, serial string) {
 	if err != nil {
 		return
 	}
+	return parseCPUInfoText(string(b))
+}
+
+// armCores names common ARM cores by "CPU part" (/proc/cpuinfo has no
+// "model name" on many ARM boards).
+var armCores = map[string]string{"0xb76": "ARM1176", "0xc07": "ARM Cortex-A7", "0xd03": "ARM Cortex-A53", "0xd04": "ARM Cortex-A35",
+	"0xd05": "ARM Cortex-A55", "0xd07": "ARM Cortex-A57", "0xd08": "ARM Cortex-A72", "0xd09": "ARM Cortex-A73", "0xd0b": "ARM Cortex-A76"}
+
+// cpuInfoBoard returns the board model line of /proc/cpuinfo ("Raspberry Pi 4
+// Model B Rev 1.4"), which also works where /proc/device-tree is hidden
+// (containers).
+func cpuInfoBoard() string {
+	b, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if k, v, ok := strings.Cut(line, ":"); ok && strings.TrimSpace(k) == "Model" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func parseCPUInfoText(text string) (model string, cores int, serial string) {
 	type pc struct{ phys, core string }
 	seen := map[pc]bool{}
-	var phys string
-	for _, line := range strings.Split(string(b), "\n") {
+	var phys, part, board string
+	for _, line := range strings.Split(text, "\n") {
 		k, v, ok := strings.Cut(line, ":")
 		if !ok {
 			continue
 		}
 		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
 		switch k {
-		case "model name", "Model", "Hardware", "cpu model":
+		case "model name", "cpu model":
 			if model == "" || k == "model name" {
 				model = v
+			}
+		case "Model":
+			board = v // board, not CPU (Raspberry Pi)
+		case "Hardware":
+			if model == "" {
+				model = v
+			}
+		case "CPU part":
+			if part == "" {
+				part = v
 			}
 		case "physical id":
 			phys = v
@@ -238,6 +279,12 @@ func parseCPUInfo() (model string, cores int, serial string) {
 		}
 	}
 	cores = len(seen)
+	if name := armCores[strings.ToLower(part)]; name != "" && (model == "" || strings.HasPrefix(model, "BCM")) {
+		model = name
+	}
+	if model == "" {
+		model = board
+	}
 	return
 }
 
@@ -343,7 +390,7 @@ func unescapeMount(s string) string {
 }
 
 func skipIface(name string) bool {
-	for _, p := range []string{"lo", "veth", "docker", "br-", "virbr", "cni", "flannel", "cali", "vnet", "tap"} {
+	for _, p := range []string{"lo", "veth", "docker", "br-", "virbr", "cni", "flannel", "cali", "vnet", "tap", "hassio"} {
 		if name == p || (p != "lo" && strings.HasPrefix(name, p)) {
 			return true
 		}

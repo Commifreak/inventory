@@ -18,17 +18,20 @@ import (
 func fakeSupervisor(t *testing.T) *httptest.Server {
 	t.Helper()
 	data := map[string]any{
-		"/host/info":       map[string]any{"hostname": "homeassistant", "operating_system": "Home Assistant OS 16.3", "kernel": "6.12.47-haos-raspi", "disk_total": 116.7, "disk_used": 20.1, "disk_free": 91.6},
-		"/os/info":         map[string]any{"version": "16.3", "version_latest": "16.3", "update_available": false, "board": "rpi4-64"},
-		"/core/info":       map[string]any{"version": "2026.11.1", "version_latest": "2026.11.2", "update_available": true},
-		"/supervisor/info": map[string]any{"version": "2026.11.0", "version_latest": "2026.11.0", "update_available": false},
-		"/addons": map[string]any{"addons": []map[string]any{
+		"/host/info": map[string]any{"hostname": "homeassistant", "operating_system": "Home Assistant OS 16.3", "kernel": "6.12.47-haos-raspi", "disk_total": 116.7, "disk_used": 20.1, "disk_free": 91.6, "chassis": "embedded", "timezone": "Europe/Berlin"},
+		"/os/info":   map[string]any{"version": "16.3", "version_latest": "16.3", "update_available": false, "board": "rpi4-64"},
+		"/core/info": map[string]any{"version": "2026.11.1", "version_latest": "2026.11.2", "update_available": true},
+		"/supervisor/info": map[string]any{"version": "2026.11.0", "version_latest": "2026.11.0", "update_available": false, "addons": []map[string]any{
 			{"name": "Mosquitto broker", "slug": "core_mosquitto", "version": "6.5.1", "version_latest": "6.5.2", "update_available": true, "repository": "core"},
 			{"name": "Inventory Agent", "slug": "x_inventory_agent", "version": "0.1.0", "version_latest": "0.1.0", "update_available": false, "repository": "x"}}},
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path == "/addons" { // needs the manager role, like the real Supervisor
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		d, ok := data[r.URL.Path]
@@ -114,7 +117,7 @@ func TestAddonSupervisorCollectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	sw := v.(protocol.SoftwareData)
-	if len(sw.Items) != 5 || sw.Items[0].Name != "Home Assistant OS" || sw.Items[4].Source != "ha-addon" {
+	if len(sw.Items) != 5 || sw.Items[0].Name != "Home Assistant OS" || sw.Items[2].Name != "Home Assistant Supervisor" || sw.Items[4].Source != "ha-addon" {
 		t.Fatalf("software: %+v", sw.Items)
 	}
 
@@ -124,11 +127,15 @@ func TestAddonSupervisorCollectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = supervisorGet(ctx, "/os/info", &osInfo)
-	info := protocol.SystemInfo{OS: protocol.OSInfo{Name: "Alpine Linux v3.22", DistroID: "alpine"}, Users: protocol.UsersInfo{Admins: []string{"root"}},
+	info := protocol.SystemInfo{OS: protocol.OSInfo{Name: "Alpine Linux v3.22", DistroID: "alpine", Timezone: "Etc/UTC"}, Hardware: protocol.HardwareInfo{Virtual: true},
+		Users:   protocol.UsersInfo{Admins: []string{"root"}},
 		Volumes: []protocol.Volume{{Mount: "/", SizeBytes: 1}}}
 	applyHAHost(&info, host, osInfo)
 	if info.OS.Name != "Home Assistant OS 16.3" || info.OS.DistroID != "haos" || info.OS.Kernel != "6.12.47-haos-raspi" || len(info.Users.Admins) != 0 {
 		t.Fatalf("os: %+v", info.OS)
+	}
+	if info.OS.Timezone != "Europe/Berlin" || info.Hardware.Virtual {
+		t.Fatalf("timezone/virtual: %q %v", info.OS.Timezone, info.Hardware.Virtual)
 	}
 	if len(info.Volumes) != 1 || info.Volumes[0].Mount != "/mnt/data" || info.Volumes[0].SizeBytes < 116<<30 {
 		t.Fatalf("volumes: %+v", info.Volumes)
@@ -141,5 +148,17 @@ func TestAddonSupervisorCollectors(t *testing.T) {
 	t.Setenv("SUPERVISOR_TOKEN", "wrong")
 	if _, _, err := collectUpdatesAddon(ctx, nil); err == nil {
 		t.Fatal("expected an error without Supervisor access")
+	}
+}
+
+func TestParseCPUInfoRaspberryPi(t *testing.T) {
+	pi4 := "processor\t: 0\nBogoMIPS\t: 108.00\nCPU implementer\t: 0x41\nCPU part\t: 0xd08\n\nprocessor\t: 1\nCPU part\t: 0xd08\n\nHardware\t: BCM2835\nRevision\t: d03114\nSerial\t\t: 100000008d6d7996\nModel\t\t: Raspberry Pi 4 Model B Rev 1.4\n"
+	model, _, serial := parseCPUInfoText(pi4)
+	if model != "ARM Cortex-A72" || serial != "100000008d6d7996" {
+		t.Errorf("pi4: model=%q serial=%q", model, serial)
+	}
+	x86 := "processor\t: 0\nmodel name\t: Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz\nphysical id\t: 0\ncore id\t\t: 0\n"
+	if model, cores, _ := parseCPUInfoText(x86); model != "Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz" || cores != 1 {
+		t.Errorf("x86: %q %d", model, cores)
 	}
 }

@@ -165,9 +165,17 @@ type haHostInfo struct {
 	OperatingSystem string  `json:"operating_system"`
 	Kernel          string  `json:"kernel"`
 	Chassis         string  `json:"chassis"`
+	Timezone        string  `json:"timezone"`
 	DiskTotal       float64 `json:"disk_total"` // GiB
 	DiskUsed        float64 `json:"disk_used"`
 	DiskFree        float64 `json:"disk_free"`
+}
+
+// haSupervisorInfo is /supervisor/info, which also lists the installed
+// add-ons (the /addons endpoint needs the "manager" role).
+type haSupervisorInfo struct {
+	haVersionInfo
+	Addons []haAddon `json:"addons"`
 }
 
 type haAddon struct {
@@ -236,7 +244,7 @@ func addonHardwareID() string {
 func addonCollectors() map[string]Collector {
 	return map[string]Collector{
 		protocol.CollectSystem:   collectSystemAddon,
-		protocol.CollectSMART:    collectSmartLinux,
+		protocol.CollectSMART:    collectSmartAddon,
 		protocol.CollectUpdates:  collectUpdatesAddon,
 		protocol.CollectSoftware: collectSoftwareAddon,
 		protocol.CollectEvents:   collectEventsLinux,
@@ -288,6 +296,14 @@ func applyHAHost(info *protocol.SystemInfo, host haHostInfo, osInfo haVersionInf
 	if osInfo.Board != "" && info.Hardware.Model == "" {
 		info.Hardware.Model = osInfo.Board
 	}
+	if host.Timezone != "" {
+		info.OS.Timezone = host.Timezone
+	}
+	// The container itself is detected as virtual; the host is a VM only if
+	// Home Assistant says so.
+	if host.Chassis != "" {
+		info.Hardware.Virtual = host.Chassis == "vm"
+	}
 	// The container's file systems and accounts say nothing about the host.
 	info.Users = protocol.UsersInfo{}
 	info.Volumes = nil
@@ -304,7 +320,7 @@ func collectUpdatesAddon(ctx context.Context, _ *State) (any, []string, error) {
 	u := protocol.UpdatesData{Manager: "Home Assistant Supervisor", Source: "Home Assistant", LastSearch: time.Now()}
 	var warns []string
 	ok := 0
-	for _, c := range []struct{ path, name string }{{"/os/info", "Home Assistant OS"}, {"/core/info", "Home Assistant Core"}, {"/supervisor/info", "Home Assistant Supervisor"}} {
+	for _, c := range []struct{ path, name string }{{"/os/info", "Home Assistant OS"}, {"/core/info", "Home Assistant Core"}} {
 		var v haVersionInfo
 		if err := supervisorGet(ctx, c.path, &v); err != nil {
 			warns = append(warns, err.Error())
@@ -316,14 +332,16 @@ func collectUpdatesAddon(ctx context.Context, _ *State) (any, []string, error) {
 				Version: v.VersionLatest, Category: "Home Assistant"})
 		}
 	}
-	var addons struct {
-		Addons []haAddon `json:"addons"`
-	}
-	if err := supervisorGet(ctx, "/addons", &addons); err != nil {
+	var sup haSupervisorInfo
+	if err := supervisorGet(ctx, "/supervisor/info", &sup); err != nil {
 		warns = append(warns, err.Error())
 	} else {
 		ok++
-		for _, a := range addons.Addons {
+		if sup.UpdateAvailable {
+			u.Pending = append(u.Pending, protocol.PendingUpdate{Title: fmt.Sprintf("Home Assistant Supervisor %s → %s", sup.Version, sup.VersionLatest),
+				Version: sup.VersionLatest, Category: "Home Assistant"})
+		}
+		for _, a := range sup.Addons {
 			if a.UpdateAvailable {
 				u.Pending = append(u.Pending, protocol.PendingUpdate{Title: fmt.Sprintf("Add-on %s %s → %s", a.Name, a.Version, a.VersionLatest),
 					Version: a.VersionLatest, Category: "Add-ons"})
@@ -341,27 +359,52 @@ func collectUpdatesAddon(ctx context.Context, _ *State) (any, []string, error) {
 func collectSoftwareAddon(ctx context.Context, _ *State) (any, []string, error) {
 	var items []protocol.SoftwareItem
 	var warns []string
-	for _, c := range []struct{ path, name string }{{"/os/info", "Home Assistant OS"}, {"/core/info", "Home Assistant Core"}, {"/supervisor/info", "Home Assistant Supervisor"}} {
+	add := func(name, version string) {
+		if version != "" {
+			items = append(items, protocol.SoftwareItem{Name: name, Version: version, Publisher: "Home Assistant", Source: "home-assistant", Scope: "machine"})
+		}
+	}
+	for _, c := range []struct{ path, name string }{{"/os/info", "Home Assistant OS"}, {"/core/info", "Home Assistant Core"}} {
 		var v haVersionInfo
 		if err := supervisorGet(ctx, c.path, &v); err != nil {
 			warns = append(warns, err.Error())
 			continue
 		}
-		if v.Version != "" {
-			items = append(items, protocol.SoftwareItem{Name: c.name, Version: v.Version, Publisher: "Home Assistant", Source: "home-assistant", Scope: "machine"})
-		}
+		add(c.name, v.Version)
 	}
-	var addons struct {
-		Addons []haAddon `json:"addons"`
-	}
-	if err := supervisorGet(ctx, "/addons", &addons); err != nil {
+	var sup haSupervisorInfo
+	if err := supervisorGet(ctx, "/supervisor/info", &sup); err != nil {
 		if len(items) == 0 {
 			return nil, warns, err
 		}
 		warns = append(warns, err.Error())
 	}
-	for _, a := range addons.Addons {
+	add("Home Assistant Supervisor", sup.Version)
+	for _, a := range sup.Addons {
 		items = append(items, protocol.SoftwareItem{Name: a.Name, Version: a.Version, Publisher: a.Repository, Source: "ha-addon", Scope: "machine"})
 	}
 	return protocol.SoftwareData{Items: items}, warns, nil
+}
+
+// collectSmartAddon marks the system disk, which the container cannot see
+// mounted: with a single internal disk (the usual SD card or SSD) that disk
+// holds Home Assistant OS.
+func collectSmartAddon(ctx context.Context, st *State) (any, []string, error) {
+	v, warns, err := collectSmartLinux(ctx, st)
+	if err != nil || v == nil {
+		return v, warns, err
+	}
+	sd := v.(protocol.SmartData)
+	internal, hasSystem := -1, false
+	count := 0
+	for i, d := range sd.Disks {
+		hasSystem = hasSystem || d.System
+		if !d.External {
+			internal, count = i, count+1
+		}
+	}
+	if !hasSystem && count == 1 {
+		sd.Disks[internal].System = true
+	}
+	return sd, warns, nil
 }
