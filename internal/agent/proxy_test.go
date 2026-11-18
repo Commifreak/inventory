@@ -42,7 +42,7 @@ func TestBypassProxy(t *testing.T) {
 	cases := map[string]bool{
 		"a.corp.example": true, "corp.example": false, "10.1.2.3": true, "x.internal": true,
 		"internal": true, "example.org": true, "www.example.org": true, "notexample.org": false,
-		"192.168.178.5": true, "169.254.1.1": true, "inventory.example.com": false,
+		"192.168.1.5": true, "169.254.1.1": true, "inventory.example.com": false,
 		"localhost": true, "127.0.0.1": true, "[::1]": true, "nas": false,
 	}
 	for host, want := range cases {
