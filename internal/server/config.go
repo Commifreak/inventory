@@ -76,7 +76,7 @@ func LoadConfig(version string) (Config, error) {
 		HAAddonRepo:          env("HA_ADDON_REPOSITORY", "https://github.com/Commifreak/inventory-ha-addon"),
 		Version:              version,
 		OIDC: OIDCConfig{
-			Issuer:       strings.TrimRight(env("OIDC_ISSUER", ""), "/"),
+			Issuer:       strings.TrimSpace(env("OIDC_ISSUER", "")), // exact: Authentik's issuer ends with "/"
 			ClientID:     env("OIDC_CLIENT_ID", ""),
 			ClientSecret: env("OIDC_CLIENT_SECRET", ""),
 			AdminGroup:   env("OIDC_ADMIN_GROUP", ""),

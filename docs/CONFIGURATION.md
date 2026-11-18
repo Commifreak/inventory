@@ -47,17 +47,24 @@ emergency access, or set `LOCAL_LOGIN=false` once SSO works.
 ### Authentik
 
 1. *Applications → Providers → Create → OAuth2/OpenID Provider*: client type
-   *Confidential*, redirect URI as above, signing key set.
+   *Confidential*, redirect URI (strict) `https://<your host>/auth/oidc/callback`,
+   a signing key selected (RS256), scopes `openid`, `email`, `profile` (the
+   default *profile* mapping includes the `groups` claim).
 2. Create an application using this provider, slug e.g. `inventory`.
 3. Create a group `inventory-admins` and add your user.
-4. Environment:
+4. Environment (`BASE_URL` must be set to the public address):
 
 ```yaml
-OIDC_ISSUER: https://authentik.example.com/application/o/inventory/
+OIDC_ISSUER: https://authentik.example.com/application/o/inventory/   # "OpenID Configuration Issuer" of the provider
 OIDC_CLIENT_ID: <client id>
 OIDC_CLIENT_SECRET: <client secret>
 OIDC_ADMIN_GROUP: inventory-admins
+OIDC_SCOPES: openid profile email     # Authentik has no "groups" scope
+OIDC_BUTTON_LABEL: Sign in with Authentik
 ```
+
+If Traefik protects the host with Authentik's forward auth (outpost), exclude
+`/api/agent/` from the middleware – agents cannot log in.
 
 ### Authelia
 

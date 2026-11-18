@@ -40,7 +40,7 @@ func (o *oidcProvider) init(ctx context.Context) (*oidc.Provider, *oidc.IDTokenV
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	p, err := oidc.NewProvider(ctx, o.s.cfg.OIDC.Issuer)
+	p, err := discoverProvider(ctx, o.s.cfg.OIDC.Issuer)
 	if err != nil {
 		return nil, nil, fmt.Errorf("OIDC discovery failed: %w", err)
 	}
@@ -229,4 +229,22 @@ func (s *Server) oidcUser(ctx context.Context, sub string, claims map[string]any
 		}
 	}
 	return nil, errors.New("no free user name")
+}
+
+// discoverProvider loads the provider configuration. The issuer must match
+// the discovery document exactly; Authentik's issuer ends with "/", others
+// do not, so the variant with/without the trailing slash is tried as well.
+func discoverProvider(ctx context.Context, issuer string) (*oidc.Provider, error) {
+	p, err := oidc.NewProvider(ctx, issuer)
+	if err == nil || !strings.Contains(err.Error(), "did not match") {
+		return p, err
+	}
+	alt := issuer + "/"
+	if strings.HasSuffix(issuer, "/") {
+		alt = strings.TrimRight(issuer, "/")
+	}
+	if p2, err2 := oidc.NewProvider(ctx, alt); err2 == nil {
+		return p2, nil
+	}
+	return nil, err
 }
