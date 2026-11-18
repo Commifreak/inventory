@@ -63,7 +63,7 @@ Google does for Chrome installers). Options for a private person in Germany:
 
 | Option | Notes |
 |---|---|
-| Certum Open Source Code Signing (cloud/SimplySign) | cheap; requires a public open source repository; automation is fiddly |
+| Certum Open Source Code Signing (cloud/SimplySign) | cheap; requires a public open source repository (this repository is public now); automation is fiddly |
 | SSL.com individual validation + eSigner | automatable in GitHub Actions; considerably more expensive |
 | Azure Artifact Signing | currently only for organisations / individuals in the US and Canada |
 

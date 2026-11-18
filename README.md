@@ -49,7 +49,8 @@ volumes:
 4. **Settings → Install agents**: download the Windows installer or copy the
    Linux/macOS command and run it on a client.
 
-While the repository is private, the image on GHCR is private too:
+The image `ghcr.io/commifreak/inventory` is pulled without credentials once its
+GHCR package is public. For a private package (e.g. in a fork), run
 `docker login ghcr.io` with a personal access token (`read:packages`), or give
 Portainer the registry credentials.
 
@@ -60,6 +61,10 @@ Portainer the registry credentials.
 - [Signing](docs/SIGNING.md) – update signing key, SmartScreen, code signing options
 - [Specification](docs/SPEC.md) and [Roadmap](docs/ROADMAP.md)
 - [Development](docs/DEVELOPMENT.md)
+
+## Security
+
+Please report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
 
 ## License
 
