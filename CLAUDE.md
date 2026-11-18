@@ -102,7 +102,8 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   `/supervisor/info`, host DNS/DHCP/Wi-Fi from `/network/info`). The system disk is the one
   with the `hassos-*` partitions (also via USB); SMART needs `privileged: [SYS_RAWIO]` in the
   add-on config and the add-on's protection mode turned off (`full_access` only applies to
-  unprotected add-ons; otherwise smartctl gets "Operation not permitted"). Add-on agents report `managed: home-assistant` and never self-update.
+  unprotected add-ons; otherwise smartctl gets "Operation not permitted"). Add-on agents
+  report `managed: home-assistant` and never self-update.
 
 ## Releases
 
@@ -114,15 +115,15 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   (secret `ADDON_REPO_TOKEN`); the CI builds the add-on image (without push) on every push.
   The Home Assistant add-on only follows these stable releases.
 - Claude sessions cannot push tags (git proxy rejects them with 403): the maintainer creates
-  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.2.0` (areas).
+  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.3.0`.
 
 ## Verification status
 
 Verified: tests/CI, several real Windows 11 clients (two notebooks of different vendors and an
 AMD desktop; data reviewed via raw exports, incl. memory modules, M.2 slots, NVMe controller,
 agent self-update), OIDC login with Authelia, Home Assistant add-on on a
-Raspberry Pi 4 (HAOS 18.5, SD card) and Pi 5 (USB SSD as system disk; SMART with protection
-mode off not yet verified).
+Raspberry Pi 4 (HAOS 18.5, SD card) and Pi 5 (USB SSD as system disk, SMART via USB with the
+add-on's protection mode off).
 Not yet verified on real systems: Linux install via systemd, SMTP delivery, OIDC with
 Authentik, macOS, Raspberry Pi undervoltage/SD card error detection with real faults,
 proxy via Windows user settings/PAC/WPAD, SATA controllers on Windows, Defender detections
