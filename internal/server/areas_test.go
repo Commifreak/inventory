@@ -261,6 +261,17 @@ func TestAreaIsolation(t *testing.T) {
 			t.Errorf("superadmin GET %s: %d", path, code)
 		}
 	}
+	// A new area starts with an enrollment token.
+	adm.post("/settings/areas", url.Values{"name": {"Family"}})
+	found := false
+	for _, tk := range mustTokens(t, s) {
+		if tk.Name == "Family" && tk.Active() && tk.AreaID != 1 && tk.AreaID != areaB.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("new area has no enrollment token")
+	}
 	// Moving a device makes it visible to bob.
 	adm.post("/devices/"+devA.DeviceID+"/area", url.Values{"area_id": {strconv.FormatInt(areaB.ID, 10)}})
 	if code, _ := bob.get("/devices/" + devA.DeviceID); code != 200 {

@@ -182,7 +182,8 @@ alerts, reminders every N hours (default 24), optional resolve mails, per-device
   and can move a device with its history.
 - Notifications: the recipients of a device's area get its alerts in addition
   to the global (or rule specific) recipients, without duplicate mails.
-- Areas are created, renamed and deleted by superadmins; only empty areas
+- Areas are created, renamed and deleted by superadmins; a new area gets a first
+  enrollment token named after it (further tokens can be created by its users). Only empty areas
   can be deleted (their tokens are deleted with them), the last area cannot.
   The last active superadmin cannot be disabled, deleted or demoted.
 - Audit entries carry their area; entries without area (logins, users, global

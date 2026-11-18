@@ -82,7 +82,14 @@ func (w *webUI) handleAreaCreate(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.s.auditArea(r, a.ID, "area.created", fmt.Sprintf("%s (group %q)", a.Name, group))
-	redirectFlash(rw, r, "/settings/areas", "Area "+a.Name+" created. Create an enrollment token for it under Install agents.")
+	// Every area starts with an enrollment token, so its users can install
+	// agents right away.
+	if _, err := w.s.store.CreateToken(r.Context(), randomToken(24), a.Name, a.ID); err != nil {
+		redirectError(rw, r, "/settings/areas", "Area "+a.Name+" created, but its enrollment token could not be created: "+err.Error())
+		return
+	}
+	w.s.auditArea(r, a.ID, "token.created", a.Name)
+	redirectFlash(rw, r, "/settings/areas", "Area "+a.Name+" created with the enrollment token \""+a.Name+"\" (Settings → Install agents).")
 }
 
 // handleAreaSave saves an area. Area admins may change the recipients of

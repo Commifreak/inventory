@@ -37,6 +37,7 @@
     <label>Name <input name="name" maxlength="60" required placeholder="e.g. Family"></label>
     <label>Single sign-on group <small class="muted">(optional)</small> <input name="oidc_group" maxlength="200"></label>
     {{if $d.OIDC}}<p class="hint">The group name is compared with the <code>{{$d.GroupsClaim}}</code> claim of the identity provider (Authelia, Authentik: the group name; Entra ID: the group ID).</p>{{end}}
+    <p class="hint">A first enrollment token named after the area is created with it; users of the area can create more under Install agents.</p>
     <button class="primary">Create area</button>
   </form>
 </section>
