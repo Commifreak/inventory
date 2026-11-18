@@ -138,9 +138,12 @@ func (o *oidcProvider) handleCallback(w http.ResponseWriter, r *http.Request) {
 		fail("Invalid ID token claims.", err)
 		return
 	}
-	// Some providers only put groups into the userinfo response.
+	// Some providers (e.g. Authelia 4.39+) put groups, user name and e-mail
+	// only into the userinfo response.
 	groups := claimStrings(claims[o.s.cfg.OIDC.GroupsClaim])
-	if len(groups) == 0 && o.s.cfg.OIDC.AdminGroup != "" {
+	_, hasName := claims["preferred_username"]
+	_, hasEmail := claims["email"]
+	if (len(groups) == 0 && o.s.cfg.OIDC.AdminGroup != "") || !hasName || !hasEmail {
 		if ui, err := p.UserInfo(r.Context(), oauth2.StaticTokenSource(tok)); err == nil {
 			var uc map[string]any
 			if ui.Claims(&uc) == nil {
@@ -195,7 +198,7 @@ func claimStrings(v any) []string {
 func (s *Server) oidcUser(ctx context.Context, sub string, claims map[string]any) (*store.User, error) {
 	email, _ := claims["email"].(string)
 	if u, err := s.store.UserBySubject(ctx, sub); err == nil {
-		if u.Email != email {
+		if email != "" && u.Email != email {
 			_ = s.store.UpdateUserOIDC(ctx, u.ID, sub, email)
 		}
 		return u, nil

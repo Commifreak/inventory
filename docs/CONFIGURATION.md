@@ -69,27 +69,37 @@ If Traefik protects the host with Authentik's forward auth (outpost), exclude
 ### Authelia
 
 ```yaml
-# authelia configuration.yml
+# Authelia configuration.yml (4.38+)
 identity_providers:
   oidc:
     clients:
       - client_id: inventory
         client_name: Inventory
-        client_secret: '$pbkdf2-sha512$...'   # authelia crypto hash generate
-        authorization_policy: two_factor
+        client_secret: '$pbkdf2-sha512$310000$...'   # authelia crypto hash generate pbkdf2 --random
+        public: false
+        authorization_policy: two_factor              # or one_factor
+        consent_mode: implicit                         # no consent page on every login
         redirect_uris:
           - https://inventory.example.com/auth/oidc/callback
         scopes: [openid, profile, email, groups]
+        response_types: [code]
+        grant_types: [authorization_code]
         token_endpoint_auth_method: client_secret_basic
 ```
 
 ```yaml
-# inventory environment
-OIDC_ISSUER: https://auth.example.com
+# inventory environment (BASE_URL must be the public address)
+OIDC_ISSUER: https://auth.example.com          # Authelia's own URL
 OIDC_CLIENT_ID: inventory
-OIDC_CLIENT_SECRET: <plain secret>
-OIDC_ADMIN_GROUP: inventory-admins
+OIDC_CLIENT_SECRET: <plain secret>             # the random secret, not the hash
+OIDC_ADMIN_GROUP: inventory-admins             # Authelia group (users file / LDAP)
+OIDC_BUTTON_LABEL: Sign in with Authelia
 ```
+
+`OIDC_SCOPES` keeps its default (`openid profile email groups`). Groups, user name
+and e-mail are read from the ID token or, if missing there (Authelia 4.39+), from
+the userinfo endpoint. If Traefik protects the host with Authelia's forward auth,
+exclude `/api/agent/` from the middleware – agents cannot log in.
 
 ## Data volume
 
