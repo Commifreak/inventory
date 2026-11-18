@@ -109,7 +109,7 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   (secret `ADDON_REPO_TOKEN`); the CI builds the add-on image (without push) on every push.
   The Home Assistant add-on only follows these stable releases.
 - Claude sessions cannot push tags (git proxy rejects them with 403): the maintainer creates
-  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.1.1`.
+  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.2.0` (areas).
 
 ## Verification status
 
