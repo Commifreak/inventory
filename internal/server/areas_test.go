@@ -348,3 +348,88 @@ func TestOIDCAccountSync(t *testing.T) {
 		t.Fatalf("expected no-area rejection, got %v", err)
 	}
 }
+
+func TestImpersonation(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	ctx := context.Background()
+	toks, _ := s.store.ListTokens(ctx)
+	tokA := toks[0]
+	areaB, _ := s.store.CreateArea(ctx, "Workshop", "")
+	tokB, _ := s.store.CreateToken(ctx, randomToken(24), "Workshop token", areaB.ID)
+	devA := enroll(t, ts, tokA.Token, protocol.Identity{Hostname: "PC-ALPHA", OS: "windows", Arch: "amd64", HardwareID: "HW-A"})
+	devB := enroll(t, ts, tokB.Token, protocol.Identity{Hostname: "PC-BRAVO", OS: "windows", Arch: "amd64", HardwareID: "HW-B"})
+	bob := addUser(t, s, "bob", false, areaB.ID)
+	carol := addUser(t, s, "carol", true)
+	admin, _ := s.store.UserByName(ctx, "admin")
+	_ = s.store.SetPassword(ctx, admin.ID, admin.PasswordHash, false)
+
+	adm, _ := login(t, ts, "admin", "initial-password-1")
+	// Token page: own areas in full, other areas only as a list without token values.
+	_, p := adm.get("/settings/install")
+	if !strings.Contains(p, tokA.Token) || strings.Contains(p, tokB.Token) || !strings.Contains(p, "Tokens of other areas") || !strings.Contains(p, "Workshop token") {
+		t.Errorf("superadmin token page does not split own and other tokens")
+	}
+
+	// Area users cannot impersonate; superadmins cannot be impersonated.
+	bc, _ := login(t, ts, "bob", "area-password-123")
+	if code, _ := bc.post("/settings/users/"+strconv.FormatInt(carol.ID, 10)+"/impersonate", nil); code != http.StatusForbidden {
+		t.Errorf("area user impersonating: %d", code)
+	}
+	adm.post("/settings/users/"+strconv.FormatInt(carol.ID, 10)+"/impersonate", nil)
+	if code, p := adm.get("/settings/users"); code != 200 || strings.Contains(p, "Support session") {
+		t.Fatalf("superadmin was impersonated: %d", code)
+	}
+	// A pending password change of bob has no effect in a support session,
+	// and the support session is not recorded as bob's login.
+	_ = s.store.SetPassword(ctx, bob.ID, bob.PasswordHash, true)
+	bobBefore, _ := s.store.UserByID(ctx, bob.ID)
+
+	// Sign in as bob: exactly bob's view and rights, banner, audited actions.
+	adm.post("/settings/users/"+strconv.FormatInt(bob.ID, 10)+"/impersonate", nil)
+	code, p := adm.get("/")
+	if code != 200 || !strings.Contains(p, "Support session") || !strings.Contains(p, devB.DeviceID) || strings.Contains(p, devA.DeviceID) || strings.Contains(p, "Change password") {
+		t.Fatalf("support session view wrong: %d", code)
+	}
+	if m := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(p); m != nil {
+		adm.csrf = m[1]
+	}
+	if code, _ := adm.get("/settings/users"); code != http.StatusForbidden {
+		t.Errorf("superadmin pages reachable in a support session: %d", code)
+	}
+	if code, _ := adm.get("/devices/" + devA.DeviceID); code != http.StatusNotFound {
+		t.Errorf("device of another area reachable in a support session: %d", code)
+	}
+	adm.post("/devices/"+devB.DeviceID+"/settings", url.Values{"display_name": {"Bravo"}, "ring": {"stable"}})
+	adm.post("/account/password", url.Values{"current": {"area-password-123"}, "new": {"changed-password-1"}, "confirm": {"changed-password-1"}})
+	if u, _ := s.store.UserByID(ctx, bob.ID); !checkPassword(u.PasswordHash, "area-password-123") {
+		t.Error("password changed in a support session")
+	}
+	auditB, _ := s.store.ListAudit(ctx, 50, false, []int64{areaB.ID})
+	var actions []string
+	for _, a := range auditB {
+		actions = append(actions, a.Username+":"+a.Action)
+	}
+	joined := strings.Join(actions, " ")
+	if !strings.Contains(joined, "admin (as bob):device.settings") || !strings.Contains(joined, "admin:impersonation.started") {
+		t.Errorf("support session not audited in the area: %v", actions)
+	}
+
+	// Back to admin.
+	adm.post("/impersonate/stop", nil)
+	if code, p := adm.get("/settings/users"); code != 200 || strings.Contains(p, "Support session") {
+		t.Fatalf("not back as superadmin: %d", code)
+	}
+	global, _ := s.store.ListAudit(ctx, 50, true, nil)
+	found := false
+	for _, a := range global {
+		if a.Action == "impersonation.ended" && a.Username == "admin (as bob)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("end of the support session not audited")
+	}
+	if u, _ := s.store.UserByID(ctx, bob.ID); !u.LastLoginAt.Equal(bobBefore.LastLoginAt) {
+		t.Error("support session recorded as bob's login")
+	}
+}

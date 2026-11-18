@@ -33,6 +33,7 @@ func (w *webUI) routes(mux *http.ServeMux) {
 		mux.HandleFunc("GET /auth/oidc/login", s.oidc.handleLogin)
 		mux.HandleFunc("GET /auth/oidc/callback", s.oidc.handleCallback)
 	}
+	mux.HandleFunc("POST /impersonate/stop", s.requireUser(w.handleImpersonateStop))
 	mux.HandleFunc("GET /account/password", s.requireUser(w.handlePasswordPage))
 	mux.HandleFunc("POST /account/password", s.requireUser(w.handlePasswordChange))
 
@@ -79,11 +80,17 @@ func (w *webUI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /settings/general", s.requireSuper(w.handleGeneralSave))
 }
 
+// actor names the acting user for the audit log; in a support session
+// "admin (as bob)".
 func actor(r *http.Request) string {
-	if u := userFrom(r.Context()); u != nil {
-		return u.Username
+	u := userFrom(r.Context())
+	if u == nil {
+		return ""
 	}
-	return ""
+	if imp := impersonatorFrom(r.Context()); imp != nil {
+		return imp.Username + " (as " + u.Username + ")"
+	}
+	return u.Username
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +162,10 @@ func (w *webUI) handlePasswordPage(rw http.ResponseWriter, r *http.Request) {
 
 func (w *webUI) handlePasswordChange(rw http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
+	if impersonatorFrom(r.Context()) != nil {
+		redirectError(rw, r, "/", "The password cannot be changed in a support session.")
+		return
+	}
 	if u.PasswordHash == "" {
 		redirectError(rw, r, "/account/password", "This account signs in via single sign-on and has no local password.")
 		return
@@ -614,14 +625,24 @@ func (w *webUI) handleInstallPage(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	toks, _ := w.s.store.ListTokens(ctx)
 	acc := accessFrom(ctx)
-	toks = slices.DeleteFunc(toks, func(t store.EnrollmentToken) bool { return !acc.sees(t.AreaID) })
+	// "My tokens": those of the areas the user is a member of (also for
+	// superadmins). Superadmins see the others only as a short list.
+	var mine, others []store.EnrollmentToken
+	for _, t := range toks {
+		switch {
+		case slices.Contains(acc.Areas, t.AreaID):
+			mine = append(mine, t)
+		case acc.Super:
+			others = append(others, t)
+		}
+	}
 	latest := map[string]string{}
 	for _, p := range []string{"windows/amd64", "windows/arm64", "linux/amd64", "linux/arm64", "linux/arm", "darwin/arm64", "darwin/amd64"} {
 		goos, goarch, _ := strings.Cut(p, "/")
 		latest[p] = w.s.agents.Latest(goos, goarch, false)
 	}
 	w.render(rw, r, "settings_install", page{Title: "Install agents", Nav: "settings", Data: map[string]any{
-		"Tokens": toks, "BaseURL": w.s.baseURL(r), "BaseURLSet": w.s.cfg.BaseURL != "", "APIPrefix": protocol.APIPrefix, "Latest": latest,
+		"Tokens": mine, "Others": others, "BaseURL": w.s.baseURL(r), "BaseURLSet": w.s.cfg.BaseURL != "", "APIPrefix": protocol.APIPrefix, "Latest": latest,
 		"HAAddonRepo": w.s.cfg.HAAddonRepo,
 	}})
 }

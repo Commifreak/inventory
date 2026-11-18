@@ -9,6 +9,12 @@
 <script src="/static/app.js?v={{.Version}}" defer></script>
 </head>
 <body>
+{{if .Impersonator}}
+<div class="impersonation" role="alert">
+  <span>Support session: you are signed in as <b>{{.User.Username}}</b> and see exactly what they see. Actions are logged as {{.Impersonator.Username}} (as {{.User.Username}}).</span>
+  <form method="post" action="/impersonate/stop" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="small">Back to {{.Impersonator.Username}}</button></form>
+</div>
+{{end}}
 {{if .User}}
 <header class="top">
   <a class="brand" href="/"><img src="/static/favicon.svg" alt="" width="22" height="22"> {{.Instance}}</a>
@@ -19,7 +25,7 @@
   </nav>
   <div class="user">
     <span class="muted">{{.User.Username}}</span>
-    {{if .User.PasswordHash}}<a href="/account/password">Password</a>{{end}}
+    {{if and .User.PasswordHash (not .Impersonator)}}<a href="/account/password">Password</a>{{end}}
     <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>
   </div>
 </header>

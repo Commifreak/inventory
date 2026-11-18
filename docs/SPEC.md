@@ -188,6 +188,18 @@ alerts, reminders every N hours (default 24), optional resolve mails, per-device
   The last active superadmin cannot be disabled, deleted or demoted.
 - Audit entries carry their area; entries without area (logins, users, global
   settings, unknown enrollment tokens) are visible to superadmins only.
+- Install page: "your tokens" are those of the areas the user is a member of,
+  also for superadmins (the initial admin and existing superadmins are members
+  of the first area). Superadmins additionally see a plain list (name, area,
+  created, uses, state – no token values or links) of the tokens of other areas.
+- Support sessions: superadmins can *sign in as* an active area user (not as
+  superadmins or disabled users) from the users page. The session then has
+  exactly that user's rights; a banner shows it and leads back to the own
+  account without a new login. Start, end and every action are audited as
+  "admin (as bob)", globally and in the user's areas; the user is not notified,
+  no login time is recorded for them and their password cannot be changed.
+  Signing out or the session expiring ends it; it also ends when the superadmin
+  loses the superadmin rights or is disabled.
 
 ## Server security
 

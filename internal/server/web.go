@@ -189,7 +189,9 @@ type page struct {
 	AreaNames map[int64]string
 	Areas     []store.Area
 	MultiArea bool
-	Data      any
+	// Impersonator: superadmin signed in as User (support session banner).
+	Impersonator *store.User
+	Data         any
 }
 
 func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p page) {
@@ -206,6 +208,7 @@ func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p p
 	}
 	p.Version = w.s.cfg.Version
 	p.Instance = w.s.generalSettings(r.Context()).InstanceName
+	p.Impersonator = impersonatorFrom(r.Context())
 	if acc := accessFrom(r.Context()); acc != nil {
 		p.Super = acc.Super
 		p.Areas = w.s.visibleAreas(r.Context())

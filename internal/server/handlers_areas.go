@@ -159,6 +159,67 @@ func (w *webUI) handleAuditPage(rw http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+// support sessions (superadmin signed in as another user)
+// ---------------------------------------------------------------------------
+
+// auditSupport records a support session event globally and in every area of
+// the impersonated user, so its area audit log shows it too.
+func (w *webUI) auditSupport(r *http.Request, target *store.User, action, details string) {
+	ctx := r.Context()
+	w.s.store.Audit(ctx, actor(r), action, details)
+	areas, _ := w.s.store.UserAreaIDs(ctx, target.ID)
+	for _, a := range areas {
+		w.s.store.AuditArea(ctx, a, actor(r), action, details)
+	}
+}
+
+// startImpersonation replaces the superadmin's session by a support session
+// as target, with exactly the target's rights.
+func (w *webUI) startImpersonation(rw http.ResponseWriter, r *http.Request, target *store.User) {
+	ctx := r.Context()
+	me := userFrom(ctx)
+	switch {
+	case impersonatorFrom(ctx) != nil:
+		redirectError(rw, r, "/settings/users", "End the current support session first.")
+		return
+	case target.ID == me.ID || target.Superadmin:
+		redirectError(rw, r, "/settings/users", "Superadmins cannot be impersonated.")
+		return
+	case target.Disabled:
+		redirectError(rw, r, "/settings/users", "Disabled users cannot be impersonated.")
+		return
+	}
+	if acc, err := w.s.loadAccess(ctx, target); err != nil || len(acc.Areas) == 0 {
+		redirectError(rw, r, "/settings/users", target.Username+" has no area and could not sign in.")
+		return
+	}
+	w.auditSupport(r, target, "impersonation.started", me.Username+" signed in as "+target.Username)
+	w.s.clearSession(rw, r)
+	if err := w.s.newSessionAs(rw, r, target, me.ID); err != nil {
+		http.Error(rw, "could not create session", http.StatusInternalServerError)
+		return
+	}
+	redirectFlash(rw, r, "/", "You are now signed in as "+target.Username+". Everything you do is logged as "+me.Username+" (as "+target.Username+").")
+}
+
+// handleImpersonateStop ends a support session and signs the superadmin in again.
+func (w *webUI) handleImpersonateStop(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	imp, target := impersonatorFrom(ctx), userFrom(ctx)
+	if imp == nil {
+		http.Redirect(rw, r, "/", http.StatusSeeOther)
+		return
+	}
+	w.auditSupport(r, target, "impersonation.ended", imp.Username+" signed out as "+target.Username)
+	w.s.clearSession(rw, r)
+	if err := w.s.newSession(rw, r, imp); err != nil {
+		http.Error(rw, "could not create session", http.StatusInternalServerError)
+		return
+	}
+	redirectFlash(rw, r, "/settings/users", "Support session as "+target.Username+" ended.")
+}
+
+// ---------------------------------------------------------------------------
 // settings: users (superadmins)
 // ---------------------------------------------------------------------------
 
@@ -321,6 +382,8 @@ func (w *webUI) handleUserAction(rw http.ResponseWriter, r *http.Request) {
 		_ = w.s.store.SetSuperadmin(ctx, u.ID, on)
 		w.s.store.Audit(ctx, actor(r), "user.superadmin", fmt.Sprintf("%s: %v", u.Username, on))
 		redirectFlash(rw, r, "/settings/users", "User "+u.Username+" updated.")
+	case "impersonate":
+		w.startImpersonation(rw, r, u)
 	case "areas":
 		areas := formAreaIDs(r)
 		if err := w.s.store.SetMemberships(ctx, u.ID, store.MemberManual, areas); err != nil {

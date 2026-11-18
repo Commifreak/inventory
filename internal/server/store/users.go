@@ -137,19 +137,26 @@ type Session struct {
 	CSRF      string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	// ImpersonatorID is the superadmin who signed in as UserID (0 = none).
+	ImpersonatorID int64
 }
 
 func (s *Store) CreateSession(ctx context.Context, sess *Session, ip, ua string) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO sessions(id_hash, user_id, csrf, created_at, expires_at, ip, user_agent) VALUES(?,?,?,?,?,?,?)`,
-		sess.IDHash, sess.UserID, sess.CSRF, sess.CreatedAt.Unix(), sess.ExpiresAt.Unix(), ip, ua)
+	var imp any
+	if sess.ImpersonatorID != 0 {
+		imp = sess.ImpersonatorID
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO sessions(id_hash, user_id, csrf, created_at, expires_at, ip, user_agent, impersonator_id) VALUES(?,?,?,?,?,?,?,?)`,
+		sess.IDHash, sess.UserID, sess.CSRF, sess.CreatedAt.Unix(), sess.ExpiresAt.Unix(), ip, ua, imp)
 	return err
 }
 
 func (s *Store) SessionByHash(ctx context.Context, h string) (*Session, error) {
 	var sess Session
 	var c, e int64
-	err := s.DB.QueryRowContext(ctx, `SELECT id_hash, user_id, csrf, created_at, expires_at FROM sessions WHERE id_hash=?`, h).
-		Scan(&sess.IDHash, &sess.UserID, &sess.CSRF, &c, &e)
+	var imp sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `SELECT id_hash, user_id, csrf, created_at, expires_at, impersonator_id FROM sessions WHERE id_hash=?`, h).
+		Scan(&sess.IDHash, &sess.UserID, &sess.CSRF, &c, &e, &imp)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -157,6 +164,7 @@ func (s *Store) SessionByHash(ctx context.Context, h string) (*Session, error) {
 		return nil, err
 	}
 	sess.CreatedAt, sess.ExpiresAt = time.Unix(c, 0), time.Unix(e, 0)
+	sess.ImpersonatorID = imp.Int64
 	return &sess, nil
 }
 

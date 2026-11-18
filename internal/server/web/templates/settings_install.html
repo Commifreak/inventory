@@ -46,8 +46,10 @@
 </section>
 {{end}}{{end}}
 
+{{if and $p.Super (not $d.Tokens)}}<div class="flash warn">You are not a member of any area, so no tokens are shown as yours. Add yourself to areas under <a href="/settings/users">Users</a>; tokens of other areas are listed below.</div>{{end}}
+
 <section class="card">
-  <h2>Tokens</h2>
+  <h2>{{if $p.Super}}Your tokens{{else}}Tokens{{end}}</h2>
   <table class="compact"><thead><tr><th>Name</th>{{if $p.MultiArea}}<th>Area</th>{{end}}<th>Created</th><th>Uses</th><th>State</th></tr></thead><tbody>
   {{range $d.Tokens}}<tr class="{{if not .Active}}dim{{end}}"><td>{{.Name}}</td>{{if $p.MultiArea}}<td>{{index $p.AreaNames .AreaID}}</td>{{end}}<td>{{fmtTime .CreatedAt}}</td><td>{{.UseCount}}</td><td>{{if .Active}}active{{else}}revoked {{fmtTime .RevokedAt}}{{end}}</td></tr>{{end}}
   </tbody></table>
@@ -58,4 +60,16 @@
     <button>Create token</button>
   </form>
 </section>
+
+{{if $p.Super}}
+<section class="card">
+  <h2>Tokens of other areas</h2>
+  <p class="hint">Areas you are not a member of. To work with them, use <i>Sign in as</i> under <a href="/settings/users">Users</a>.</p>
+  {{if $d.Others}}
+  <table class="compact"><thead><tr><th>Name</th><th>Area</th><th>Created</th><th>Uses</th><th>Last used</th><th>State</th></tr></thead><tbody>
+  {{range $d.Others}}<tr class="{{if not .Active}}dim{{end}}"><td>{{.Name}}</td><td>{{index $p.AreaNames .AreaID}}</td><td>{{fmtTime .CreatedAt}}</td><td>{{.UseCount}}</td><td>{{if .LastUsedAt.IsZero}}–{{else}}{{ago .LastUsedAt}}{{end}}</td><td>{{if .Active}}active{{else}}revoked {{fmtTime .RevokedAt}}{{end}}</td></tr>{{end}}
+  </tbody></table>
+  {{else}}<p class="muted">None.</p>{{end}}
+</section>
+{{end}}
 {{end}}

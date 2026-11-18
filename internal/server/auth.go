@@ -24,7 +24,14 @@ const (
 	ctxSession
 	ctxDevice
 	ctxAccess
+	ctxImpersonator
 )
+
+// impersonatorFrom returns the superadmin signed in as the current user (support session).
+func impersonatorFrom(ctx context.Context) *store.User {
+	u, _ := ctx.Value(ctxImpersonator).(*store.User)
+	return u
+}
 
 func userFrom(ctx context.Context) *store.User {
 	u, _ := ctx.Value(ctxUser).(*store.User)
@@ -51,8 +58,13 @@ func (s *Server) ensureAdmin(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.store.CreateUser(ctx, &store.User{Username: "admin", PasswordHash: hash, MustChangePassword: true, Superadmin: true}); err != nil {
+	admin := &store.User{Username: "admin", PasswordHash: hash, MustChangePassword: true, Superadmin: true}
+	if err := s.store.CreateUser(ctx, admin); err != nil {
 		return err
+	}
+	// Member of the first area, so its tokens show up as "your tokens".
+	if areas, err := s.store.ListAreas(ctx); err == nil && len(areas) > 0 {
+		_ = s.store.SetMemberships(ctx, admin.ID, store.MemberManual, []int64{areas[0].ID})
 	}
 	if generated {
 		// Printed once to the container log on purpose.
@@ -93,13 +105,22 @@ func validatePassword(pw string) error {
 
 // newSession creates a session and sets the cookie.
 func (s *Server) newSession(w http.ResponseWriter, r *http.Request, u *store.User) error {
+	return s.newSessionAs(w, r, u, 0)
+}
+
+// newSessionAs creates a session for u; impersonatorID != 0 makes it a
+// support session of that superadmin (no login time is recorded for u).
+func (s *Server) newSessionAs(w http.ResponseWriter, r *http.Request, u *store.User, impersonatorID int64) error {
 	token := randomToken(32)
 	now := time.Now()
-	sess := &store.Session{IDHash: hashToken(token), UserID: u.ID, CSRF: randomToken(24), CreatedAt: now, ExpiresAt: now.Add(s.cfg.SessionLifetime)}
+	sess := &store.Session{IDHash: hashToken(token), UserID: u.ID, CSRF: randomToken(24), CreatedAt: now, ExpiresAt: now.Add(s.cfg.SessionLifetime),
+		ImpersonatorID: impersonatorID}
 	if err := s.store.CreateSession(r.Context(), sess, s.clientIP(r), truncate(r.UserAgent(), 200)); err != nil {
 		return err
 	}
-	_ = s.store.TouchLogin(r.Context(), u.ID)
+	if impersonatorID == 0 {
+		_ = s.store.TouchLogin(r.Context(), u.ID)
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
@@ -161,7 +182,17 @@ func (s *Server) requireUser(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		if u.MustChangePassword && u.PasswordHash != "" && r.URL.Path != "/account/password" && r.URL.Path != "/logout" {
+		// Support session: the superadmin must still be an active superadmin.
+		var imp *store.User
+		if sess.ImpersonatorID != 0 {
+			imp, _ = s.store.UserByID(r.Context(), sess.ImpersonatorID)
+			if imp == nil || imp.Disabled || !imp.Superadmin {
+				s.clearSession(w, r)
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+		}
+		if imp == nil && u.MustChangePassword && u.PasswordHash != "" && r.URL.Path != "/account/password" && r.URL.Path != "/logout" {
 			http.Redirect(w, r, "/account/password", http.StatusSeeOther)
 			return
 		}
@@ -183,6 +214,9 @@ func (s *Server) requireUser(next http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), ctxUser, u)
 		ctx = context.WithValue(ctx, ctxSession, sess)
 		ctx = context.WithValue(ctx, ctxAccess, acc)
+		if imp != nil {
+			ctx = context.WithValue(ctx, ctxImpersonator, imp)
+		}
 		next(w, r.WithContext(ctx))
 	}
 }
