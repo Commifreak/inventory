@@ -435,6 +435,7 @@
   </dl>
 {{if $dev.Managed}}
   <p class="hint">This agent is updated by {{if eq $dev.Managed "home-assistant"}}Home Assistant (add-on updates){{else}}{{$dev.Managed}}{{end}}; the server does not offer it updates.</p>
+  {{if $d.Row.AgentLatest}}<p class="warn-text">Home Assistant offers the add-on update to {{$d.Row.AgentLatest}} – install it there (Settings → Add-ons → Inventory Agent).</p>{{end}}
   {{else}}
     <form method="post" action="/devices/{{$dev.ID}}/update-now" class="row">
     {{template "csrf" $csrf}}

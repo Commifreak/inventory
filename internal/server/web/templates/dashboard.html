@@ -67,7 +67,7 @@
       {{else}}<span class="muted">–</span>{{end}}</td>
     <td>{{template "online" .Online}} <span title="{{fmtTime .D.LastSeenAt}}">{{ago .D.LastSeenAt}}</span></td>
     <td>{{if .LastReport.IsZero}}<span class="muted">–</span>{{else}}<span title="{{fmtTime .LastReport}}">{{ago .LastReport}}</span><div class="sub">{{fmtTime .LastReport}}</div>{{end}}</td>
-    <td>{{if .AgentLatest}}<span class="badge st-warning mono" title="Newer agent available: {{.AgentLatest}}">{{.D.AgentVersion}}</span>{{else}}<span class="badge st-ok mono" title="Latest agent">{{.D.AgentVersion}}</span>{{end}}<div class="sub">{{if eq .D.Managed "home-assistant"}}Home Assistant add-on{{else}}{{.D.Ring}}{{end}}{{if .D.PinnedVersion}} · pinned{{end}}{{if eq .D.UpdateState "offered"}} · updating{{end}}{{if eq .D.UpdateState "failed"}} · <span class="err-text">update failed</span>{{end}}{{if not .D.RevokedAt.IsZero}} · <span class="err-text">revoked</span>{{end}}</div></td>
+    <td>{{if .AgentLatest}}<span class="badge st-warning mono" title="{{if .D.Managed}}Add-on update available in Home Assistant{{else}}Newer agent available{{end}}: {{.AgentLatest}}">{{.D.AgentVersion}}</span>{{else}}<span class="badge st-ok mono" title="Latest agent">{{.D.AgentVersion}}</span>{{end}}<div class="sub">{{if eq .D.Managed "home-assistant"}}Home Assistant add-on{{else}}{{.D.Ring}}{{end}}{{if .D.PinnedVersion}} · pinned{{end}}{{if eq .D.UpdateState "offered"}} · updating{{end}}{{if eq .D.UpdateState "failed"}} · <span class="err-text">update failed</span>{{end}}{{if not .D.RevokedAt.IsZero}} · <span class="err-text">revoked</span>{{end}}</div></td>
   </tr>
   {{end}}
   </tbody>

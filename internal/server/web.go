@@ -396,6 +396,18 @@ func DiskStatus(d protocol.Disk) string {
 	return stUnknown
 }
 
+// addonSelfUpdate returns the version of a pending update of the Inventory
+// Agent add-on itself. The Supervisor tells the agent about it; the server
+// cannot know it, as the add-on follows releases independent of its image.
+func addonSelfUpdate(up protocol.UpdatesData) string {
+	for _, p := range up.Pending {
+		if p.Category == "Add-ons" && strings.HasPrefix(p.Title, "Add-on Inventory Agent ") && p.Version != "" {
+			return p.Version
+		}
+	}
+	return ""
+}
+
 // DeviceRow is the dashboard view of a device.
 type DeviceRow struct {
 	D             store.Device
@@ -453,6 +465,9 @@ func (s *Server) deviceRow(d store.Device, snaps map[string]*store.Snapshot, ale
 	if up, ok := decodeSnap[protocol.UpdatesData](snaps, protocol.CollectUpdates); ok {
 		row.UpdatesKnown = true
 		row.Pending, row.Security, row.Reboot, row.SearchError = up.PendingCount, up.SecurityCount, up.RebootRequired, up.SearchError
+		if d.Managed == "home-assistant" {
+			row.AgentLatest = addonSelfUpdate(*up)
+		}
 		latest := map[string]protocol.UpdateHistoryEntry{}
 		for _, h := range up.History {
 			if cur, ok := latest[h.Title]; !ok || h.Date.After(cur.Date) {

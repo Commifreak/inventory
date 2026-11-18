@@ -137,6 +137,17 @@ func TestManagedAgentGetsNoUpdates(t *testing.T) {
 	if target, reason := TargetVersion(d, UpdatePolicy{}, s.agents); target != "" || !strings.Contains(reason, "Home Assistant") {
 		t.Fatalf("managed device targeted: %q (%s)", target, reason)
 	}
+	// The add-on update reported by the Supervisor marks the agent as outdated.
+	rep := protocol.Report{AgentVersion: "0.0.1", Sections: map[string]protocol.Section{protocol.CollectUpdates: {CollectedAt: time.Now(), Data: protocol.UpdatesData{
+		Manager: "Home Assistant Supervisor", PendingCount: 2, Pending: []protocol.PendingUpdate{
+			{Title: "Add-on Mosquitto broker 6.5.1 → 6.5.2", Version: "6.5.2", Category: "Add-ons"},
+			{Title: "Add-on Inventory Agent 0.0.1 → 0.2.0", Version: "0.2.0", Category: "Add-ons"}}}}}}
+	postJSON(t, api+"/report", er.Credential, rep, nil)
+	snaps, _ := s.store.Snapshots(ctx, er.DeviceID)
+	d, _ = s.store.DeviceByID(ctx, er.DeviceID)
+	if row := s.deviceRow(*d, snaps, nil, time.Now(), 300); row.AgentLatest != "0.2.0" {
+		t.Fatalf("add-on update not shown: %q", row.AgentLatest)
+	}
 	// Back to a normal agent: the flag is cleared.
 	postJSON(t, api+"/checkin", er.Credential, protocol.CheckinRequest{AgentVersion: "0.0.1"}, &cr)
 	if d, _ := s.store.DeviceByID(ctx, er.DeviceID); d.Managed != "" {
