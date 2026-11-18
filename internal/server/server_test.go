@@ -66,7 +66,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server, *fakeMailer) {
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	writeAgents(t, filepath.Join(dir, "bundled"), "0.1.0", priv)
 	cfg := Config{DataDir: filepath.Join(dir, "data"), AgentsDir: filepath.Join(dir, "bundled"), InitialAdminPassword: "initial-password-1",
-		LocalLogin: true, SessionLifetime: time.Hour, Version: "test"}
+		LocalLogin: true, SessionLifetime: time.Hour, Version: "test", HAAddonRepo: "https://github.com/Commifreak/inventory-ha-addon"}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s, err := New(cfg, log)
 	if err != nil {
@@ -355,6 +355,9 @@ func TestEndToEnd(t *testing.T) {
 		if !strings.Contains(p, "PC-ANNA") {
 			t.Errorf("tab %s does not render device", tab)
 		}
+	}
+	if p := get(t, c, ts.URL+"/settings/install"); !strings.Contains(p, "Add repository to Home Assistant") || !strings.Contains(p, "repository_url=https%3A%2F%2Fgithub.com%2FCommifreak%2Finventory-ha-addon") {
+		t.Errorf("Home Assistant install section missing: %s", regexp.MustCompile(`href="https://my[^"]*"`).FindString(p))
 	}
 	for _, p := range []string{"/alerts", "/settings/install", "/settings/updates", "/settings/collection", "/settings/alerts", "/settings/smtp", "/settings/users", "/settings/general"} {
 		get(t, c, ts.URL+p)

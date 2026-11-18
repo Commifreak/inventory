@@ -199,7 +199,7 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 	for _, d := range devices {
 		row := s.deviceRow(d, snaps[d.ID], alerts, now, checkin)
 		row.LastReport = lastReports[d.ID]
-		if latest := s.agents.Latest(d.OS, d.Arch, true); latest != "" && CompareVersions(latest, d.AgentVersion) > 0 {
+		if latest := s.agents.Latest(d.OS, d.Arch, true); d.Managed == "" && latest != "" && CompareVersions(latest, d.AgentVersion) > 0 {
 			row.AgentLatest = latest
 		}
 		counts["total"]++
@@ -556,6 +556,7 @@ func (w *webUI) handleInstallPage(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.render(rw, r, "settings_install", page{Title: "Install agents", Nav: "settings", Data: map[string]any{
 		"Tokens": toks, "BaseURL": w.s.baseURL(r), "BaseURLSet": w.s.cfg.BaseURL != "", "APIPrefix": protocol.APIPrefix, "Latest": latest,
+		"HAAddonRepo": w.s.cfg.HAAddonRepo,
 	}})
 }
 

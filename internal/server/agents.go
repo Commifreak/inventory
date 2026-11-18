@@ -293,6 +293,10 @@ func TargetVersion(d *store.Device, p UpdatePolicy, repo *AgentRepo) (target, re
 	}
 	latest := repo.Latest(d.OS, d.Arch, true)
 	switch {
+	case d.Managed == "home-assistant":
+		return "", "updated by Home Assistant (add-on updates)"
+	case d.Managed != "":
+		return "", "updated by " + d.Managed
 	case d.PinnedVersion != "":
 		if available(d.PinnedVersion) {
 			return d.PinnedVersion, "pinned"

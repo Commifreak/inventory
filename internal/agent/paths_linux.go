@@ -17,6 +17,9 @@ var testRoot = os.Getenv("INVENTORY_AGENT_ROOT")
 
 // DataDir holds config and state.
 func DataDir() string {
+	if addonMode {
+		return addonDataDir
+	}
 	if testRoot != "" {
 		return testRoot + "/data"
 	}

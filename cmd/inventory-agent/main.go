@@ -50,6 +50,9 @@ func main() {
 		fmt.Println(agent.Version)
 	case "run":
 		os.Exit(runForeground())
+	case "addon":
+		// Entry point of the Home Assistant add-on container.
+		os.Exit(runAddon())
 	case "proxy":
 		target := ""
 		if len(args) > 1 {
@@ -119,6 +122,17 @@ func normalizeArgs(in []string) []string {
 		out[0], out[1] = out[1], out[0]
 	}
 	return out
+}
+
+func runAddon() int {
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel()}))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := agent.RunAddon(ctx, log); err != nil {
+		log.Error("agent stopped", "err", err)
+		return 1
+	}
+	return 0
 }
 
 func runForeground() int {

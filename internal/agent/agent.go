@@ -138,9 +138,12 @@ func (a *Agent) cycle(ctx context.Context) (time.Duration, error) {
 			return 0, err
 		}
 	}
-	req := protocol.CheckinRequest{AgentVersion: Version, Identity: Identity(), BootTime: BootTime(), AgentTime: time.Now(), LastCollected: a.state.LastRun, UpdateResult: a.state.UpdateResult, Diagnostics: a.diagnostics()}
+	req := protocol.CheckinRequest{AgentVersion: Version, Identity: Identity(), BootTime: BootTime(), AgentTime: time.Now(), LastCollected: a.state.LastRun, UpdateResult: a.state.UpdateResult, Diagnostics: a.diagnostics(), Managed: managedBy()}
 	resp, err := a.client.Checkin(ctx, req)
 	if errors.Is(err, ErrUnauthorized) {
+		if a.reEnrollFromOptions() {
+			return time.Minute, errors.New("the server rejected the device credential - enrolling again with the token from the add-on options")
+		}
 		return 6 * time.Hour, errors.New("the server does not know this device any more (deleted?) - reinstall the agent to enroll it again")
 	}
 	if err != nil {
@@ -170,7 +173,8 @@ func (a *Agent) cycle(ctx context.Context) (time.Duration, error) {
 		a.log.Warn("report failed", "err", err)
 	}
 
-	if resp.Update != nil && resp.Update.Version != Version {
+	// Managed agents (Home Assistant add-on) are updated by their manager.
+	if resp.Update != nil && resp.Update.Version != Version && managedBy() == "" {
 		if err := a.update(ctx, resp.Update); err != nil {
 			if errors.Is(err, ErrRestart) {
 				return 0, err

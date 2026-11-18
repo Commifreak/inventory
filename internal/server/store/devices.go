@@ -121,6 +121,7 @@ type Device struct {
 	Notes             string
 	RevokedAt         time.Time
 	DisabledRules     []string // alert rules disabled for this device
+	Managed           string   // "home-assistant": agent updated by Home Assistant
 }
 
 // Name returns the display name or the hostname.
@@ -134,17 +135,17 @@ func (d Device) Name() string {
 const deviceCols = `id, hostname, display_name, os, arch, hardware_id, machine_id, credential_hash, enrollment_token_id,
  enrolled_at, last_seen_at, last_ip, agent_version, boot_time, clock_skew_sec, os_name, ring, pinned_version,
  update_now_version, update_target, update_state, update_error, update_changed_at, collect_now, offline_alert_hours,
- alerts_muted, notes, revoked_at, disabled_rules`
+ alerts_muted, notes, revoked_at, disabled_rules, managed`
 
 func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	var d Device
-	var dn, hw, mid, ip, av, osn, pin, unow, utarget, ust, uerr, cnow, notes, disabled sql.NullString
+	var dn, hw, mid, ip, av, osn, pin, unow, utarget, ust, uerr, cnow, notes, disabled, managed sql.NullString
 	var tok, last, boot, skew, uchg, rev sql.NullInt64
 	var enrolled int64
 	err := row.Scan(&d.ID, &d.Hostname, &dn, &d.OS, &d.Arch, &hw, &mid, &d.CredentialHash, &tok,
 		&enrolled, &last, &ip, &av, &boot, &skew, &osn, &d.Ring, &pin,
 		&unow, &utarget, &ust, &uerr, &uchg, &cnow, &d.OfflineAlertHours,
-		&d.AlertsMuted, &notes, &rev, &disabled)
+		&d.AlertsMuted, &notes, &rev, &disabled, &managed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -158,6 +159,7 @@ func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	d.EnrolledAt = time.Unix(enrolled, 0)
 	d.LastSeenAt, d.BootTime, d.UpdateChangedAt, d.RevokedAt = tu(last), tu(boot), tu(uchg), tu(rev)
 	d.ClockSkewSec = skew.Int64
+	d.Managed = managed.String
 	if disabled.String != "" {
 		d.DisabledRules = strings.Split(disabled.String, ",")
 	}
@@ -425,4 +427,10 @@ func (s *Store) MarkSeen(ctx context.Context, tx *sql.Tx, deviceID, kind string,
 		}
 	}
 	return added, nil
+}
+
+// SetManaged records what updates the agent of a device ("" = this server).
+func (s *Store) SetManaged(ctx context.Context, id, managed string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE devices SET managed=? WHERE id=?`, nullStr(managed), id)
+	return err
 }

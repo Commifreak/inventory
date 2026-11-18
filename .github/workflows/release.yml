@@ -2,6 +2,9 @@ name: Image
 
 # main -> ghcr.io/<owner>/inventory:edge   (agent version <VERSION>-edge.<timestamp>)
 # tag vX.Y.Z -> :X.Y.Z, :X.Y, :latest      (agent version X.Y.Z)
+# tag vX.Y.Z also builds the Home Assistant add-on image
+#   ghcr.io/<owner>/inventory-ha-agent:X.Y.Z and sets the version in the add-on
+#   repository (secret ADDON_REPO_TOKEN: contents write on inventory-ha-addon).
 on:
   push:
     branches: [main]
@@ -59,3 +62,61 @@ jobs:
             release_signing_key=RELEASE_SIGNING_KEY
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  ha-addon:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: version
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/inventory-ha-agent" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ha-addon/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:${{ steps.v.outputs.version }}
+            ${{ steps.img.outputs.name }}:latest
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          cache-from: type=gha,scope=ha-addon
+          cache-to: type=gha,mode=max,scope=ha-addon
+      - name: check add-on repository token
+        env:
+          TOKEN: ${{ secrets.ADDON_REPO_TOKEN }}
+        run: test -n "$TOKEN" || (echo "::error::secret ADDON_REPO_TOKEN is missing" && exit 1)
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/inventory-ha-addon
+          token: ${{ secrets.ADDON_REPO_TOKEN }}
+          path: addon-repo
+      - name: set add-on version
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          cd addon-repo
+          sed -i -E "s/^version: .*/version: \"${VERSION}\"/" inventory-agent/config.yaml
+          if ! grep -q "^## ${VERSION}$" inventory-agent/CHANGELOG.md; then
+            { echo "# Changelog"; echo; echo "## ${VERSION}"; echo; \
+              echo "- Inventory agent ${VERSION}, see https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"; echo; \
+              tail -n +3 inventory-agent/CHANGELOG.md; } > CHANGELOG.new && mv CHANGELOG.new inventory-agent/CHANGELOG.md
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "add-on already at ${VERSION}"; exit 0; fi
+          git commit -m "Inventory Agent ${VERSION}"
+          git push

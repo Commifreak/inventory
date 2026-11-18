@@ -429,7 +429,10 @@
     <dt>Target version</dt><dd>{{if $d.Target}}<span class="mono">{{$d.Target}}</span>{{else}}<span class="muted">stay on current</span>{{end}} <span class="sub">({{$d.TargetReason}})</span></dd>
     {{if $dev.UpdateState}}<dt>Update state</dt><dd>{{$dev.UpdateState}} {{$dev.UpdateTarget}} <span class="sub">{{fmtTime $dev.UpdateChangedAt}}</span>{{if $dev.UpdateError}}<div class="err-text small">{{$dev.UpdateError}}</div>{{end}}</dd>{{end}}
   </dl>
-  <form method="post" action="/devices/{{$dev.ID}}/update-now" class="row">
+{{if $dev.Managed}}
+  <p class="hint">This agent is updated by {{if eq $dev.Managed "home-assistant"}}Home Assistant (add-on updates){{else}}{{$dev.Managed}}{{end}}; the server does not offer it updates.</p>
+  {{else}}
+    <form method="post" action="/devices/{{$dev.ID}}/update-now" class="row">
     {{template "csrf" $csrf}}
     <select name="version">
       {{range $d.Versions}}<option value="{{.Version}}" {{if eq .Version $d.Latest}}selected{{end}}>{{.Version}}{{if eq .Version $d.Latest}} (latest){{end}}</option>{{end}}
@@ -437,6 +440,7 @@
     <button>Update now</button>
   </form>
   <p class="hint">Installs the selected version at the next check-in, even while updates are paused. Older versions are a rollback.</p>
+  {{end}}
 </section>
 
 <section class="card">

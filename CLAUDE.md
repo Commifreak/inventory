@@ -42,9 +42,10 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 | `cmd/inventory-server`, `cmd/inventory-agent`, `cmd/inventory-release` | entry points (server, agent CLI/installer, manifest + signing tool) |
 | `internal/protocol` | wire format shared by agent and server (`data.go` = collector payloads) |
 | `internal/server` | HTTP handlers, ingest, alert rules (`alerts.go` catalog), update targeting (`agents.go`), end-of-support data (`eol.go`), OIDC, web UI (`web/templates`, `web/static`) |
-| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0005_*.sql`) |
+| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0006_*.sql`) |
 | `internal/agent` | agent loop, self-update, collectors per OS (`*_windows.go`, `*_linux.go`, `*_darwin.go`), installers; shared parsers: `smbios.go` (memory/slots), `sysprofiler.go` (macOS), `proxy.go` (system proxy), `diag.go` (agent diagnostics) |
 | `internal/release` | Ed25519 signing; trusted public key in `keys/official.pub` |
+| `ha-addon/Dockerfile` | image of the Home Assistant add-on (definition in the separate repo `Commifreak/inventory-ha-addon`); add-on mode of the agent: `internal/agent/addon_linux.go` |
 | `internal/tag` | install tag (server URL + enrollment token) appended to Windows installers |
 
 ## Conventions and pitfalls
@@ -87,7 +88,9 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 ## Releases
 
 - Push to `main` → `ghcr.io/commifreak/inventory:edge`, agent version `<VERSION>-edge.<timestamp>`.
-- Tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:latest`; bump `VERSION` afterwards.
+- Tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:latest`; bump `VERSION` afterwards. Tags also build
+  `ghcr.io/commifreak/inventory-ha-agent:X.Y.Z` and set the version in the add-on repo
+  (secret `ADDON_REPO_TOKEN`); the CI builds the add-on image (without push) on every push.
 
 ## Verification status
 

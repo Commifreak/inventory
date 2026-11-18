@@ -117,3 +117,29 @@ func TestSecurityChangesAndRules(t *testing.T) {
 		t.Errorf("disabled rules not stored: %+v", d.DisabledRules)
 	}
 }
+
+func TestManagedAgentGetsNoUpdates(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	ctx := context.Background()
+	toks, _ := s.store.ListTokens(ctx)
+	api := ts.URL + protocol.APIPrefix
+	var er protocol.EnrollResponse
+	postJSON(t, api+"/enroll", "", protocol.EnrollRequest{Token: toks[0].Token, Identity: protocol.Identity{Hostname: "homeassistant", OS: "linux", Arch: "arm64"}}, &er)
+	var cr protocol.CheckinResponse
+	if code := postJSON(t, api+"/checkin", er.Credential, protocol.CheckinRequest{AgentVersion: "0.0.1", Managed: "home-assistant"}, &cr); code != 200 {
+		t.Fatalf("checkin: %d", code)
+	}
+	d, _ := s.store.DeviceByID(ctx, er.DeviceID)
+	if d.Managed != "home-assistant" || cr.Update != nil {
+		t.Fatalf("managed=%q update=%+v", d.Managed, cr.Update)
+	}
+	d.UpdateNowVersion = "9.9.9"
+	if target, reason := TargetVersion(d, UpdatePolicy{}, s.agents); target != "" || !strings.Contains(reason, "Home Assistant") {
+		t.Fatalf("managed device targeted: %q (%s)", target, reason)
+	}
+	// Back to a normal agent: the flag is cleared.
+	postJSON(t, api+"/checkin", er.Credential, protocol.CheckinRequest{AgentVersion: "0.0.1"}, &cr)
+	if d, _ := s.store.DeviceByID(ctx, er.DeviceID); d.Managed != "" {
+		t.Fatalf("managed flag not cleared: %q", d.Managed)
+	}
+}

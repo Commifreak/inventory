@@ -173,6 +173,10 @@ func (s *Server) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.AgentVersion = req.AgentVersion
+	if m := truncate(req.Managed, 50); m != d.Managed {
+		_ = s.store.SetManaged(ctx, d.ID, m)
+		d.Managed = m
+	}
 	if diag := req.Diagnostics; diag != nil {
 		_ = s.store.PutAgentDiagnostics(ctx, d.ID, now, sanitizeDiagnostics(*diag))
 	}

@@ -32,6 +32,26 @@ if missing. On macOS install it with `brew install smartmontools` for disk data.
 Reinstalling on the same machine keeps the device (matched by SMBIOS UUID and
 machine id) and its history.
 
+## Home Assistant OS
+
+Home Assistant OS has a read-only system without package manager, so the agent
+runs there as the **Home Assistant add-on "Inventory Agent"**
+([add-on repository](https://github.com/Commifreak/inventory-ha-addon)):
+
+1. *Settings → Install agents* → section *Home Assistant OS*: button to add the
+   add-on repository to Home Assistant, plus server URL and token to copy.
+2. Install the add-on, enter `server_url` and `enrollment_token` in its
+   configuration, enable *Start on boot* and *Watchdog*, start it.
+
+The add-on runs `inventory-agent addon`: configuration from the add-on options,
+data in the add-on's `/data` (survives restarts and OS updates), no self-update
+(new versions arrive as add-on updates for releases `vX.Y.Z`; the server shows the
+device as "Home Assistant add-on" and never offers it updates). OS, Home Assistant
+and add-on versions and their available updates come from the Supervisor API;
+hardware, network, SMART (full hardware access) and Raspberry Pi power data from the
+host; kernel messages from the host journal. If the device is deleted on the
+server, the add-on enrolls again with the token from its options.
+
 ## Files
 
 | | Windows | Linux | macOS |

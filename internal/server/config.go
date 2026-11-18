@@ -23,7 +23,9 @@ type Config struct {
 	OIDC                 OIDCConfig
 	SessionLifetime      time.Duration
 	EOLFetch             bool
-	Version              string
+	// HAAddonRepo is the Home Assistant add-on repository shown on the install page.
+	HAAddonRepo string
+	Version     string
 }
 
 // OIDCConfig configures login via an OpenID Connect provider (Authentik, Authelia, ...).
@@ -71,6 +73,7 @@ func LoadConfig(version string) (Config, error) {
 		LocalLogin:           envBool("LOCAL_LOGIN", true),
 		SessionLifetime:      12 * time.Hour,
 		EOLFetch:             envBool("EOL_FETCH", true),
+		HAAddonRepo:          env("HA_ADDON_REPOSITORY", "https://github.com/Commifreak/inventory-ha-addon"),
 		Version:              version,
 		OIDC: OIDCConfig{
 			Issuer:       strings.TrimRight(env("OIDC_ISSUER", ""), "/"),

@@ -29,6 +29,20 @@
   <p class="hint">Run as root on the client:</p>
   <div class="copy"><input readonly value="curl -fsSL '{{$d.BaseURL}}{{$d.APIPrefix}}/install/{{.Token}}/install.sh' | sudo sh"><button type="button" data-copy>Copy</button></div>
   <p class="hint">Available: {{range $p, $v := $d.Latest}}{{if $v}}{{if not (hasPrefix $p "windows")}}<span class="badge">{{$p}}</span> {{end}}{{end}}{{end}}</p>
+
+  {{if $d.HAAddonRepo}}
+  <h3>Home Assistant OS</h3>
+  <p class="hint">Install the agent as a Home Assistant add-on (Raspberry Pi, x86): add the add-on repository, install <b>Inventory Agent</b>, enter the server URL and token below in its configuration and start it. Updates arrive as add-on updates.</p>
+  <div class="row wrap">
+    <a class="button" href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url={{urlquery $d.HAAddonRepo}}" target="_blank" rel="noopener">Add repository to Home Assistant</a>
+  </div>
+  <p class="hint">Repository (Settings → Add-ons → Add-on store → ⋮ → Repositories):</p>
+  <div class="copy"><input readonly value="{{$d.HAAddonRepo}}"><button type="button" data-copy>Copy</button></div>
+  <p class="hint">server_url:</p>
+  <div class="copy"><input readonly value="{{$d.BaseURL}}"><button type="button" data-copy>Copy</button></div>
+  <p class="hint">enrollment_token:</p>
+  <div class="copy"><input readonly value="{{.Token}}"><button type="button" data-copy>Copy</button></div>
+  {{end}}
 </section>
 {{end}}{{end}}
 

@@ -21,6 +21,9 @@ import (
 )
 
 func platformCollectors() map[string]Collector {
+	if addonMode {
+		return addonCollectors()
+	}
 	return map[string]Collector{
 		protocol.CollectSystem:    collectSystemLinux,
 		protocol.CollectSMART:     collectSmartLinux,
@@ -33,6 +36,10 @@ func platformCollectors() map[string]Collector {
 
 // Identity identifies this machine.
 func Identity() protocol.Identity {
+	if addonMode {
+		return protocol.Identity{Hostname: addonHostname(), OS: protocol.OSLinux, Arch: runtime.GOARCH,
+			HardwareID: addonHardwareID(), MachineID: addonMachineID()}
+	}
 	h, _ := os.Hostname()
 	return protocol.Identity{
 		Hostname:   h,

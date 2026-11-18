@@ -64,6 +64,9 @@ type CheckinRequest struct {
 	UpdateResult *UpdateResult `json:"update_result,omitempty"`
 	// Diagnostics describe the agent itself (absent from older agents).
 	Diagnostics *AgentDiagnostics `json:"diagnostics,omitempty"`
+	// Managed is set when the agent is updated by something else than the
+	// server, e.g. "home-assistant" for the Home Assistant add-on.
+	Managed string `json:"managed,omitempty"`
 }
 
 // AgentDiagnostics help to troubleshoot an agent from the server.
