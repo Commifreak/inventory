@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -188,6 +189,29 @@ type haAddon struct {
 	State           string `json:"state"`
 }
 
+// haNetworkInfo is /network/info: the host's interfaces as NetworkManager
+// sees them. The container only knows the Supervisor's internal DNS.
+type haNetworkInfo struct {
+	Interfaces []haInterface `json:"interfaces"`
+}
+
+type haInterface struct {
+	Interface string     `json:"interface"`
+	Type      string     `json:"type"` // ethernet, wireless, vlan
+	Connected bool       `json:"connected"`
+	Primary   bool       `json:"primary"`
+	IPv4      haIPConfig `json:"ipv4"`
+	IPv6      haIPConfig `json:"ipv6"`
+	WiFi      *struct {
+		SSID string `json:"ssid"`
+	} `json:"wifi"`
+}
+
+type haIPConfig struct {
+	Method      string   `json:"method"` // auto, static, disabled
+	Nameservers []string `json:"nameservers"`
+}
+
 var (
 	haHostMu     sync.Mutex
 	haHostCached haHostInfo
@@ -273,7 +297,63 @@ func collectSystemAddon(ctx context.Context, st *State) (any, []string, error) {
 		warns = append(warns, "supervisor os info: "+err.Error())
 	}
 	applyHAHost(&info, host, osInfo)
+	var netInfo haNetworkInfo
+	if err := supervisorGet(ctx, "/network/info", &netInfo); err != nil {
+		warns = append(warns, "supervisor network info: "+err.Error())
+	} else {
+		applyHANetwork(&info, netInfo)
+	}
 	return info, warns, nil
+}
+
+// applyHANetwork replaces the container's DNS (the Supervisor's internal
+// resolver) with the host's name servers and adds DHCP and Wi-Fi details.
+func applyHANetwork(info *protocol.SystemInfo, n haNetworkInfo) {
+	var dns []string
+	addDNS := func(list []string) {
+		for _, d := range list {
+			if d != "" && !slices.Contains(dns, d) {
+				dns = append(dns, d)
+			}
+		}
+	}
+	// Primary interface first.
+	ifaces := slices.Clone(n.Interfaces)
+	slices.SortStableFunc(ifaces, func(a, b haInterface) int {
+		switch {
+		case a.Primary == b.Primary:
+			return 0
+		case a.Primary:
+			return -1
+		}
+		return 1
+	})
+	for _, it := range ifaces {
+		if !it.Connected {
+			continue
+		}
+		ifDNS := append(slices.Clone(it.IPv4.Nameservers), it.IPv6.Nameservers...)
+		addDNS(ifDNS)
+		if it.WiFi != nil && it.WiFi.SSID != "" && info.WiFiSSID == "" {
+			info.WiFiSSID = it.WiFi.SSID
+		}
+		for i := range info.Network {
+			a := &info.Network[i]
+			if a.Name != it.Interface {
+				continue
+			}
+			if len(ifDNS) > 0 {
+				a.DNS = ifDNS
+			}
+			if it.IPv4.Method == "auto" || it.IPv4.Method == "static" {
+				dhcp := it.IPv4.Method == "auto"
+				a.DHCP = &dhcp
+			}
+		}
+	}
+	if len(dns) > 0 {
+		info.DNS = dns
+	}
 }
 
 func applyHAHost(info *protocol.SystemInfo, host haHostInfo, osInfo haVersionInfo) {
@@ -381,9 +461,23 @@ func collectSoftwareAddon(ctx context.Context, _ *State) (any, []string, error) 
 	}
 	add("Home Assistant Supervisor", sup.Version)
 	for _, a := range sup.Addons {
-		items = append(items, protocol.SoftwareItem{Name: a.Name, Version: a.Version, Publisher: a.Repository, Source: "ha-addon", Scope: "machine"})
+		items = append(items, protocol.SoftwareItem{Name: a.Name, Version: a.Version, Publisher: addonPublisher(a.Repository), Source: "ha-addon", Scope: "machine"})
 	}
 	return protocol.SoftwareData{Items: items}, warns, nil
+}
+
+// addonPublisher names the repository of an add-on. Custom repositories are
+// identified by a hash only; their names need the "manager" role.
+func addonPublisher(repo string) string {
+	switch repo {
+	case "core":
+		return "Home Assistant"
+	case "local":
+		return "local add-on"
+	case "":
+		return ""
+	}
+	return "custom repository"
 }
 
 // collectSmartAddon marks the system disk, which the container cannot see

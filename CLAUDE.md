@@ -96,7 +96,8 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 - Home Assistant add-on mode (`inventory-agent addon`): the container hides host mounts,
   `/sys/firmware` and `/etc/machine-id`; use the Supervisor API with the default role
   (only `…/info` endpoints – `/addons` returns 403, installed add-ons come from
-  `/supervisor/info`). Add-on agents report `managed: home-assistant` and never self-update.
+  `/supervisor/info`, host DNS/DHCP/Wi-Fi from `/network/info`). Add-on agents report
+  `managed: home-assistant` and never self-update.
 
 ## Releases
 
@@ -107,14 +108,14 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   (secret `ADDON_REPO_TOKEN`); the CI builds the add-on image (without push) on every push.
   The Home Assistant add-on only follows these stable releases.
 - Claude sessions cannot push tags (git proxy rejects them with 403): the maintainer creates
-  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.1.0`; `VERSION` is 0.2.0.
+  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.1.1`; `VERSION` is 0.2.0.
 
 ## Verification status
 
 Verified: tests/CI, several real Windows 11 clients (HP ProBook, Lenovo ThinkPad T480, CSL
 desktop with AMD/ASUS board; data reviewed via raw exports, incl. memory modules, M.2 slots,
 NVMe controller, agent self-update), OIDC login with Authelia, Home Assistant add-on on a
-Raspberry Pi 4 (HAOS 18.5; first fixes after that test are in `main`, not yet released).
+Raspberry Pi 4 (HAOS 18.5, add-on 0.1.1).
 Not yet verified on real systems: Linux install via systemd, SMTP delivery, OIDC with
 Authentik, macOS, Raspberry Pi undervoltage/SD card error detection with real faults,
 proxy via Windows user settings/PAC/WPAD, SATA controllers on Windows, Defender detections

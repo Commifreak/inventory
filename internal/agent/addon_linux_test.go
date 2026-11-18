@@ -19,6 +19,12 @@ func fakeSupervisor(t *testing.T) *httptest.Server {
 	t.Helper()
 	data := map[string]any{
 		"/host/info": map[string]any{"hostname": "homeassistant", "operating_system": "Home Assistant OS 16.3", "kernel": "6.12.47-haos-raspi", "disk_total": 116.7, "disk_used": 20.1, "disk_free": 91.6, "chassis": "embedded", "timezone": "Europe/Berlin"},
+		"/network/info": map[string]any{"interfaces": []map[string]any{
+			{"interface": "wlan0", "type": "wireless", "connected": true, "primary": false, "ipv4": map[string]any{"method": "static", "nameservers": []string{"192.0.2.53"}},
+				"ipv6": map[string]any{"method": "disabled", "nameservers": []string{}}, "wifi": map[string]any{"ssid": "HomeNet"}},
+			{"interface": "end0", "type": "ethernet", "connected": true, "primary": true, "ipv4": map[string]any{"method": "auto", "nameservers": []string{"192.0.2.1"}},
+				"ipv6": map[string]any{"method": "auto", "nameservers": []string{"2001:db8::1"}}, "wifi": nil},
+			{"interface": "eth1", "type": "ethernet", "connected": false, "ipv4": map[string]any{"method": "auto", "nameservers": []string{"198.51.100.1"}}}}},
 		"/os/info":   map[string]any{"version": "16.3", "version_latest": "16.3", "update_available": false, "board": "rpi4-64"},
 		"/core/info": map[string]any{"version": "2026.11.1", "version_latest": "2026.11.2", "update_available": true},
 		"/supervisor/info": map[string]any{"version": "2026.11.0", "version_latest": "2026.11.0", "update_available": false, "addons": []map[string]any{
@@ -117,7 +123,8 @@ func TestAddonSupervisorCollectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	sw := v.(protocol.SoftwareData)
-	if len(sw.Items) != 5 || sw.Items[0].Name != "Home Assistant OS" || sw.Items[2].Name != "Home Assistant Supervisor" || sw.Items[4].Source != "ha-addon" {
+	if len(sw.Items) != 5 || sw.Items[0].Name != "Home Assistant OS" || sw.Items[2].Name != "Home Assistant Supervisor" || sw.Items[4].Source != "ha-addon" ||
+		sw.Items[3].Publisher != "Home Assistant" || sw.Items[4].Publisher != "custom repository" {
 		t.Fatalf("software: %+v", sw.Items)
 	}
 
@@ -140,6 +147,22 @@ func TestAddonSupervisorCollectors(t *testing.T) {
 	if len(info.Volumes) != 1 || info.Volumes[0].Mount != "/mnt/data" || info.Volumes[0].SizeBytes < 116<<30 {
 		t.Fatalf("volumes: %+v", info.Volumes)
 	}
+	var netInfo haNetworkInfo
+	if err := supervisorGet(ctx, "/network/info", &netInfo); err != nil {
+		t.Fatal(err)
+	}
+	info.DNS = []string{"172.30.32.3"}
+	info.Network = []protocol.NetAdapter{{Name: "end0", Up: true}, {Name: "wlan0", Up: true, Wireless: true}}
+	applyHANetwork(&info, netInfo)
+	if strings.Join(info.DNS, ",") != "192.0.2.1,2001:db8::1,192.0.2.53" || info.WiFiSSID != "HomeNet" {
+		t.Fatalf("dns/ssid: %v %q", info.DNS, info.WiFiSSID)
+	}
+	if n := info.Network[0]; n.DHCP == nil || !*n.DHCP || strings.Join(n.DNS, ",") != "192.0.2.1,2001:db8::1" {
+		t.Fatalf("end0: %+v", n)
+	}
+	if n := info.Network[1]; n.DHCP == nil || *n.DHCP {
+		t.Fatalf("wlan0 (static): %+v", n)
+	}
 	if addonHostname() != "homeassistant" {
 		t.Fatalf("hostname: %s", addonHostname())
 	}
@@ -152,9 +175,9 @@ func TestAddonSupervisorCollectors(t *testing.T) {
 }
 
 func TestParseCPUInfoRaspberryPi(t *testing.T) {
-	pi4 := "processor\t: 0\nBogoMIPS\t: 108.00\nCPU implementer\t: 0x41\nCPU part\t: 0xd08\n\nprocessor\t: 1\nCPU part\t: 0xd08\n\nHardware\t: BCM2835\nRevision\t: d03114\nSerial\t\t: 100000008d6d7996\nModel\t\t: Raspberry Pi 4 Model B Rev 1.4\n"
+	pi4 := "processor\t: 0\nBogoMIPS\t: 108.00\nCPU implementer\t: 0x41\nCPU part\t: 0xd08\n\nprocessor\t: 1\nCPU part\t: 0xd08\n\nHardware\t: BCM2835\nRevision\t: d03114\nSerial\t\t: 10000000abcdef01\nModel\t\t: Raspberry Pi 4 Model B Rev 1.4\n"
 	model, _, serial := parseCPUInfoText(pi4)
-	if model != "ARM Cortex-A72" || serial != "100000008d6d7996" {
+	if model != "ARM Cortex-A72" || serial != "10000000abcdef01" {
 		t.Errorf("pi4: model=%q serial=%q", model, serial)
 	}
 	x86 := "processor\t: 0\nmodel name\t: Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz\nphysical id\t: 0\ncore id\t\t: 0\n"
