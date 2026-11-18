@@ -7,7 +7,8 @@ Guidance for Claude Code when working in this repository.
 - Talk to the maintainer in **German**; everything in the repository (code, comments,
   UI texts, mails, docs, commit messages) is **English**.
 - Clarify open questions before starting larger changes; small, obvious fixes can be done directly.
-- Pushing directly to `main` is allowed.
+- Pushing directly to `main` is allowed (also in `Commifreak/inventory-ha-addon`). Both
+  repositories are public: never commit personal data (domains, names, IPs of clients).
 - The product is **read-only monitoring**: agents report data, the server never executes
   anything on clients. Do not add remote actions without an explicit decision.
 - Decisions are documented in `docs/SPEC.md`, status and ideas in `docs/ROADMAP.md` – keep both current.
@@ -84,18 +85,32 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   outside temp dirs: Linux paths are relocatable via `testRoot`/`sys` parameters, the
   diagnostics log via `diagLog.path`.
 - UI: strict CSP – no inline scripts or `style=` attributes; JS lives in `web/static/app.js`.
+- OIDC: `OIDC_ISSUER` is used as given (Authentik's issuer ends with `/`; the other spelling
+  is tried on a mismatch). Groups/name/e-mail fall back to the userinfo endpoint
+  (Authelia 4.39+ puts only minimal claims into the ID token).
+- Home Assistant add-on mode (`inventory-agent addon`): the container hides host mounts,
+  `/sys/firmware` and `/etc/machine-id`; use the Supervisor API with the default role
+  (only `…/info` endpoints – `/addons` returns 403, installed add-ons come from
+  `/supervisor/info`). Add-on agents report `managed: home-assistant` and never self-update.
 
 ## Releases
 
 - Push to `main` → `ghcr.io/commifreak/inventory:edge`, agent version `<VERSION>-edge.<timestamp>`.
-- Tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:latest`; bump `VERSION` afterwards. Tags also build
+- Tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:latest`; bump `VERSION` afterwards (edge builds must sort
+  above the last release: `0.1.0-edge` < `0.1.0`). Tags also build
   `ghcr.io/commifreak/inventory-ha-agent:X.Y.Z` and set the version in the add-on repo
   (secret `ADDON_REPO_TOKEN`); the CI builds the add-on image (without push) on every push.
+  The Home Assistant add-on only follows these stable releases.
+- Claude sessions cannot push tags (git proxy rejects them with 403): the maintainer creates
+  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.1.0`; `VERSION` is 0.2.0.
 
 ## Verification status
 
-Verified: tests/CI, several real Windows 11 clients (HP ProBook, Lenovo ThinkPad T480, …;
-data reviewed via raw exports, incl. memory modules, M.2 slots, NVMe controller, agent
-self-update). Not yet verified on real systems: Linux install via systemd, SMTP delivery,
-OIDC with Authentik/Authelia, macOS, Raspberry Pi features (SD card errors, undervoltage),
-proxy via Windows user settings/PAC/WPAD, SATA controllers on Windows.
+Verified: tests/CI, several real Windows 11 clients (HP ProBook, Lenovo ThinkPad T480, CSL
+desktop with AMD/ASUS board; data reviewed via raw exports, incl. memory modules, M.2 slots,
+NVMe controller, agent self-update), OIDC login with Authelia, Home Assistant add-on on a
+Raspberry Pi 4 (HAOS 18.5; first fixes after that test are in `main`, not yet released).
+Not yet verified on real systems: Linux install via systemd, SMTP delivery, OIDC with
+Authentik, macOS, Raspberry Pi undervoltage/SD card error detection with real faults,
+proxy via Windows user settings/PAC/WPAD, SATA controllers on Windows, Defender detections
+on a real client.
