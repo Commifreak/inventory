@@ -27,6 +27,34 @@ thresholds, low disk space, failed or long pending updates, pending reboots,
 end of support, Defender off, missing Secure Boot certificates, bluescreens,
 disk errors, devices offline and more.
 
+## Screenshots
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <img src="docs/screenshots/dashboard.png" alt="Device list with status, system disk, updates, last report and agent version per device">
+</picture>
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/device-overview.png"><img src="docs/screenshots/device-overview.png" alt="Device overview"></a><br><b>Device overview</b> – OS and end of support, hardware, Secure Boot certificates, Defender, encryption</td>
+    <td width="50%"><a href="docs/screenshots/device-disks.png"><img src="docs/screenshots/device-disks.png" alt="Disks"></a><br><b>Disks</b> – SMART values with trends, storage controllers and their ports</td>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/device-updates.png"><img src="docs/screenshots/device-updates.png" alt="Updates"></a><br><b>Updates</b> – pending updates, security updates, history with failures</td>
+    <td><a href="docs/screenshots/alerts.png"><img src="docs/screenshots/alerts.png" alt="Alerts"></a><br><b>Alerts</b> – open and resolved alerts of all devices</td>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/alert-rules.png"><img src="docs/screenshots/alert-rules.png" alt="Alert rules"></a><br><b>Alert rules</b> – thresholds, severity and recipients per rule</td>
+    <td><a href="docs/screenshots/install.png"><img src="docs/screenshots/install.png" alt="Install agents"></a><br><b>Install agents</b> – installers and install commands per enrollment token</td>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/areas.png"><img src="docs/screenshots/areas.png" alt="Areas"></a><br><b>Areas</b> – users manage their own devices; SSO groups and alert recipients per area</td>
+    <td></td>
+  </tr>
+</table>
+
+All screenshots show fictional demo data.
+
 ## Quick start
 
 ```yaml
