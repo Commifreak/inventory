@@ -481,24 +481,82 @@ func addonPublisher(repo string) string {
 }
 
 // collectSmartAddon marks the system disk, which the container cannot see
-// mounted: with a single internal disk (the usual SD card or SSD) that disk
-// holds Home Assistant OS.
+// mounted: the disk holding the Home Assistant OS partitions (GPT names
+// "hassos-*" or the file system label "hassos-data"). That disk is the
+// system disk even when it is attached via USB (SSD on a Raspberry Pi).
+// Without such partitions a single internal disk is assumed to be it.
 func collectSmartAddon(ctx context.Context, st *State) (any, []string, error) {
 	v, warns, err := collectSmartLinux(ctx, st)
 	if err != nil || v == nil {
 		return v, warns, err
 	}
 	sd := v.(protocol.SmartData)
-	internal, hasSystem := -1, false
-	count := 0
-	for i, d := range sd.Disks {
-		hasSystem = hasSystem || d.System
+	markAddonSystemDisk(sd.Disks, haosDisk(addonSysBlock, addonDevDir))
+	return sd, warns, nil
+}
+
+// Paths for haosDisk (relocatable for tests).
+var (
+	addonSysBlock = "/sys/class/block"
+	addonDevDir   = "/dev"
+)
+
+func markAddonSystemDisk(disks []protocol.Disk, haos string) {
+	if haos != "" {
+		for i := range disks {
+			if disks[i].Device == "/dev/"+haos {
+				for j := range disks {
+					disks[j].System = false
+				}
+				disks[i].System, disks[i].External = true, false
+				return
+			}
+		}
+	}
+	internal, count := -1, 0
+	for i, d := range disks {
+		if d.System {
+			return
+		}
 		if !d.External {
 			internal, count = i, count+1
 		}
 	}
-	if !hasSystem && count == 1 {
-		sd.Disks[internal].System = true
+	switch {
+	case count == 1:
+		disks[internal].System = true
+	case count == 0 && len(disks) == 1:
+		// Only a USB disk: Home Assistant OS boots from it.
+		disks[0].System, disks[0].External = true, false
 	}
-	return sd, warns, nil
+}
+
+// haosDisk returns the name of the disk ("sda", "mmcblk0", "nvme0n1") that
+// holds the Home Assistant OS partitions, or "".
+func haosDisk(sysBlock, devDir string) string {
+	parent := func(part string) string {
+		real, err := filepath.EvalSymlinks(filepath.Join(sysBlock, part))
+		if err != nil {
+			return ""
+		}
+		return filepath.Base(filepath.Dir(real))
+	}
+	entries, _ := os.ReadDir(sysBlock)
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(sysBlock, e.Name(), "uevent"))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if name, ok := strings.CutPrefix(line, "PARTNAME="); ok && strings.HasPrefix(name, "hassos-") {
+				if d := parent(e.Name()); d != "" {
+					return d
+				}
+			}
+		}
+	}
+	if real, err := filepath.EvalSymlinks(filepath.Join(devDir, "disk", "by-label", "hassos-data")); err == nil {
+		return parent(filepath.Base(real))
+	}
+	return ""
 }

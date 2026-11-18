@@ -96,8 +96,9 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 - Home Assistant add-on mode (`inventory-agent addon`): the container hides host mounts,
   `/sys/firmware` and `/etc/machine-id`; use the Supervisor API with the default role
   (only `…/info` endpoints – `/addons` returns 403, installed add-ons come from
-  `/supervisor/info`, host DNS/DHCP/Wi-Fi from `/network/info`). Add-on agents report
-  `managed: home-assistant` and never self-update.
+  `/supervisor/info`, host DNS/DHCP/Wi-Fi from `/network/info`). The system disk is the one
+  with the `hassos-*` partitions (also via USB); SMART needs `privileged: [SYS_RAWIO]` in the
+  add-on config. Add-on agents report `managed: home-assistant` and never self-update.
 
 ## Releases
 
@@ -116,7 +117,7 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 Verified: tests/CI, several real Windows 11 clients (HP ProBook, Lenovo ThinkPad T480, CSL
 desktop with AMD/ASUS board; data reviewed via raw exports, incl. memory modules, M.2 slots,
 NVMe controller, agent self-update), OIDC login with Authelia, Home Assistant add-on on a
-Raspberry Pi 4 (HAOS 18.5, add-on 0.1.1).
+Raspberry Pi 4 (HAOS 18.5, SD card) and Pi 5 (USB SSD; SMART via SYS_RAWIO not yet verified).
 Not yet verified on real systems: Linux install via systemd, SMTP delivery, OIDC with
 Authentik, macOS, Raspberry Pi undervoltage/SD card error detection with real faults,
 proxy via Windows user settings/PAC/WPAD, SATA controllers on Windows, Defender detections

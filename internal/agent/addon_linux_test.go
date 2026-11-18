@@ -185,3 +185,54 @@ func TestParseCPUInfoRaspberryPi(t *testing.T) {
 		t.Errorf("x86: %q %d", model, cores)
 	}
 }
+
+func TestAddonSystemDisk(t *testing.T) {
+	root := t.TempDir()
+	dev := filepath.Join(root, "devices", "platform", "usb", "block", "sda")
+	for _, p := range []string{"sda1", "sda8"} {
+		if err := os.MkdirAll(filepath.Join(dev, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = os.WriteFile(filepath.Join(dev, "uevent"), []byte("MAJOR=8\nMINOR=0\nDEVNAME=sda\nDEVTYPE=disk\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dev, "sda1", "uevent"), []byte("DEVNAME=sda1\nDEVTYPE=partition\nPARTN=1\nPARTNAME=hassos-boot\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dev, "sda8", "uevent"), []byte("DEVNAME=sda8\nDEVTYPE=partition\nPARTN=8\nPARTNAME=hassos-data\n"), 0o644)
+	cls := filepath.Join(root, "class", "block")
+	_ = os.MkdirAll(cls, 0o755)
+	for _, l := range [][2]string{{"sda", dev}, {"sda1", filepath.Join(dev, "sda1")}, {"sda8", filepath.Join(dev, "sda8")}} {
+		if err := os.Symlink(l[1], filepath.Join(cls, l[0])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := haosDisk(cls, filepath.Join(root, "dev")); got != "sda" {
+		t.Fatalf("haosDisk = %q", got)
+	}
+	// Fallback via the file system label.
+	_ = os.WriteFile(filepath.Join(dev, "sda1", "uevent"), []byte("DEVNAME=sda1\nDEVTYPE=partition\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dev, "sda8", "uevent"), []byte("DEVNAME=sda8\nDEVTYPE=partition\n"), 0o644)
+	byLabel := filepath.Join(root, "dev", "disk", "by-label")
+	_ = os.MkdirAll(byLabel, 0o755)
+	_ = os.WriteFile(filepath.Join(root, "dev", "sda8"), nil, 0o644)
+	_ = os.Symlink(filepath.Join(root, "dev", "sda8"), filepath.Join(byLabel, "hassos-data"))
+	if got := haosDisk(cls, filepath.Join(root, "dev")); got != "sda" {
+		t.Fatalf("haosDisk via label = %q", got)
+	}
+
+	// USB SSD with the HAOS partitions next to an empty SD slot and a second USB disk.
+	disks := []protocol.Disk{{Device: "/dev/sdb", External: true}, {Device: "/dev/sda", External: true, Bus: "USB"}}
+	markAddonSystemDisk(disks, "sda")
+	if !disks[1].System || disks[1].External || disks[0].System {
+		t.Fatalf("haos disk: %+v", disks)
+	}
+	// Without partition info: a single USB disk is the system disk, a single internal disk as well.
+	disks = []protocol.Disk{{Device: "/dev/sda", External: true}}
+	markAddonSystemDisk(disks, "")
+	if !disks[0].System || disks[0].External {
+		t.Fatalf("single usb disk: %+v", disks)
+	}
+	disks = []protocol.Disk{{Device: "/dev/mmcblk0"}, {Device: "/dev/sda", External: true}}
+	markAddonSystemDisk(disks, "")
+	if !disks[0].System || disks[1].System {
+		t.Fatalf("single internal disk: %+v", disks)
+	}
+}
