@@ -18,7 +18,7 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM="${TARGETVARIANT#v}" go build -trimpath \
-    -ldflags "-s -w -X github.com/commifreak/inventory/internal/agent.Version=${VERSION:-$(cat VERSION)-dev}" \
+    -ldflags "-s -w -X github.com/commifreak/inventory/internal/agent.Version=${VERSION:-0.0.0-dev}" \
     -o /out/inventory-agent ./cmd/inventory-agent
 
 FROM debian:bookworm-slim

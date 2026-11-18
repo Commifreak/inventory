@@ -3,7 +3,7 @@
 # manifest. Used by the Dockerfile and CI; works locally as well.
 #
 # Environment:
-#   VERSION                   agent version (default: contents of VERSION + "-dev")
+#   VERSION                   agent version (default: scripts/version.sh, e.g. 0.2.1-dev)
 #   RELEASE_SIGNING_KEY_FILE  path to the Ed25519 private key (PEM), optional
 #   RELEASE_SIGNING_KEY       the key itself (PEM), optional
 #   EXTRA_TRUSTED_KEY         base64 public key compiled into agents (forks)
@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-$(cat VERSION)-dev}"
+VERSION="${VERSION:-$(scripts/version.sh dev)}"
 OUT="dist/agents/${VERSION}"
 TARGETS="${TARGETS:-windows/amd64 windows/arm64 linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64}"
 

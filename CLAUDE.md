@@ -101,14 +101,15 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 
 ## Releases
 
-- Push to `main` → `ghcr.io/commifreak/inventory:edge`, agent version `<VERSION>-edge.<timestamp>`.
-- Tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:latest`; bump `VERSION` afterwards (edge builds must sort
-  above the last release: `0.1.0-edge` < `0.1.0`). Tags also build
+- Push to `main` → `ghcr.io/commifreak/inventory:edge`, agent version from `scripts/version.sh`:
+  newest tag with patch+1 plus `-edge.<timestamp>` (e.g. `0.2.1-edge…` after `v0.2.0`), so edge
+  sorts above the last release and below every following one. No version file to bump.
+- Tag `vX.Y.Z` → `:X.Y.Z`, `:X.Y`, `:latest`. Tags also build
   `ghcr.io/commifreak/inventory-ha-agent:X.Y.Z` and set the version in the add-on repo
   (secret `ADDON_REPO_TOKEN`); the CI builds the add-on image (without push) on every push.
   The Home Assistant add-on only follows these stable releases.
 - Claude sessions cannot push tags (git proxy rejects them with 403): the maintainer creates
-  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.1.1`; `VERSION` is 0.2.0.
+  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.1.1`.
 
 ## Verification status
 

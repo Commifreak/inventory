@@ -21,7 +21,7 @@ ARG VERSION
 ARG EXTRA_TRUSTED_KEY
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=secret,id=release_signing_key,required=false \
-    VERSION="${VERSION:-$(cat VERSION)-dev}" RELEASE_SIGNING_KEY_FILE=/run/secrets/release_signing_key \
+    VERSION="${VERSION:-0.0.0-dev}" RELEASE_SIGNING_KEY_FILE=/run/secrets/release_signing_key \
     EXTRA_TRUSTED_KEY="${EXTRA_TRUSTED_KEY}" ./scripts/build-agents.sh \
  && mkdir -p /out && cp -r dist/agents /out/agents
 
@@ -31,7 +31,7 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
-    -ldflags "-s -w -X main.version=${VERSION:-$(cat VERSION)-dev}" -o /out/inventory-server ./cmd/inventory-server \
+    -ldflags "-s -w -X main.version=${VERSION:-0.0.0-dev}" -o /out/inventory-server ./cmd/inventory-server \
  && mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot

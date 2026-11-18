@@ -14,7 +14,7 @@ go run ./cmd/inventory-agent collect            # run the collectors of this mac
 Build all agents (unsigned unless a key is given):
 
 ```bash
-./scripts/build-agents.sh                                   # -> dist/agents/<VERSION>-dev
+./scripts/build-agents.sh                                   # -> dist/agents/<last tag, patch+1>-dev
 go run ./cmd/inventory-release keygen -out dev              # throwaway key pair
 RELEASE_SIGNING_KEY_FILE=dev.key ./scripts/build-agents.sh
 go run ./cmd/inventory-release verify -dir dist/agents/0.1.0-dev -pub dev.pub
@@ -40,6 +40,9 @@ Image: `docker buildx build -t inventory:dev .` (add
 ## Releases
 
 - Every push to `main` builds `ghcr.io/commifreak/inventory:edge` with agent
-  version `<VERSION>-edge.<timestamp>`.
-- A tag `vX.Y.Z` builds `:X.Y.Z`, `:X.Y` and `:latest`. Bump `VERSION` after a release.
+  version `<last tag, patch+1>-edge.<timestamp>` (`scripts/version.sh`), e.g.
+  `0.2.1-edge.202611181200` after `v0.2.0`: above the last release, below every
+  following one, so agents update correctly when a server switches between
+  `:edge` and `:latest`.
+- A tag `vX.Y.Z` builds `:X.Y.Z`, `:X.Y` and `:latest`. Nothing has to be changed afterwards.
 - The workflow fails if the secret `RELEASE_SIGNING_KEY` is missing.
