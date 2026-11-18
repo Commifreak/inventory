@@ -9,6 +9,7 @@
 | 5 | Linux agent (x64, arm64, armv7) with install script | done |
 | 6 | OIDC login (Authentik, Authelia) | done – needs testing against the IdPs |
 | 7 | macOS agent | basic implementation, untested |
+| 8 | Areas: users manage their own devices and tokens, superadmins everything | done – needs a field test with OIDC groups |
 
 ## Next steps
 
@@ -27,6 +28,7 @@
 - Microsoft Store (Appx) app inventory
 - winget based "outdated software" report
 - Per-device alert rule overrides beyond the offline threshold
+- Read-only role for areas; area users creating users for their area
 - Remote support: not built into the agent (read-only principle, attack surface);
   possible later: show the RustDesk/MeshCentral ID of a client with a connect link
 - RAID controller details via vendor tools (storcli etc.)

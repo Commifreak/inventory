@@ -42,8 +42,8 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 |---|---|
 | `cmd/inventory-server`, `cmd/inventory-agent`, `cmd/inventory-release` | entry points (server, agent CLI/installer, manifest + signing tool) |
 | `internal/protocol` | wire format shared by agent and server (`data.go` = collector payloads) |
-| `internal/server` | HTTP handlers, ingest, alert rules (`alerts.go` catalog), update targeting (`agents.go`), end-of-support data (`eol.go`), OIDC, web UI (`web/templates`, `web/static`) |
-| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0006_*.sql`) |
+| `internal/server` | HTTP handlers, ingest, alert rules (`alerts.go` catalog), update targeting (`agents.go`), end-of-support data (`eol.go`), OIDC, areas/access (`access.go`, `handlers_areas.go`), web UI (`web/templates`, `web/static`) |
+| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0007_*.sql`) |
 | `internal/agent` | agent loop, self-update, collectors per OS (`*_windows.go`, `*_linux.go`, `*_darwin.go`), installers; shared parsers: `smbios.go` (memory/slots), `sysprofiler.go` (macOS), `proxy.go` (system proxy), `diag.go` (agent diagnostics) |
 | `internal/release` | Ed25519 signing; trusted public key in `keys/official.pub` |
 | `ha-addon/Dockerfile` | image of the Home Assistant add-on (definition in the separate repo `Commifreak/inventory-ha-addon`); add-on mode of the agent: `internal/agent/addon_linux.go` |
@@ -85,6 +85,11 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   outside temp dirs: Linux paths are relocatable via `testRoot`/`sys` parameters, the
   diagnostics log via `diagLog.path`.
 - UI: strict CSP – no inline scripts or `style=` attributes; JS lives in `web/static/app.js`.
+- Areas: every device/token belongs to an area. New UI handlers must check access:
+  devices via `loadDevice` (404 for other areas), lists via `visibleDevices`/`accessFrom(ctx).sees`,
+  global settings via `requireSuper`. Audit device/token actions with `auditArea`.
+  `TestAreaIsolation` must cover new routes. Re-enrollment matches only within the
+  token's area (`FindDeviceByIdentity(areaID, …)`).
 - OIDC: `OIDC_ISSUER` is used as given (Authentik's issuer ends with `/`; the other spelling
   is tried on a mismatch). Groups/name/e-mail fall back to the userinfo endpoint
   (Authelia 4.39+ puts only minimal claims into the ID token).
@@ -113,4 +118,4 @@ Raspberry Pi 4 (HAOS 18.5; first fixes after that test are in `main`, not yet re
 Not yet verified on real systems: Linux install via systemd, SMTP delivery, OIDC with
 Authentik, macOS, Raspberry Pi undervoltage/SD card error detection with real faults,
 proxy via Windows user settings/PAC/WPAD, SATA controllers on Windows, Defender detections
-on a real client.
+on a real client, areas with real OIDC groups (Authelia/Authentik).

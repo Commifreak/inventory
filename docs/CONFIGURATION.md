@@ -19,7 +19,7 @@ alert rules, intervals, update policy, users) is configured in the web UI.
 | `LOG_LEVEL` | `info` | `debug` for more output. |
 | `OIDC_ISSUER` | – | OpenID Connect issuer URL. Enables single sign-on. |
 | `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | – | Client credentials. |
-| `OIDC_ADMIN_GROUP` | – | Only members of this group may sign in. Empty = every authenticated user of the client. |
+| `OIDC_ADMIN_GROUP` | – | Members of this group are superadmins (synchronised at every login). Other SSO users need a group set on an area (or a manually assigned area). Empty: superadmin rights of SSO users are managed in the UI. |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim containing the groups. |
 | `OIDC_SCOPES` | `openid profile email groups` | Requested scopes. |
 | `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Text of the login button. |
@@ -39,10 +39,23 @@ OIDC login no middleware is needed.
 Redirect URI to register at the identity provider:
 `https://<your host>/auth/oidc/callback`
 
-All users are administrators; restrict access with `OIDC_ADMIN_GROUP`. Users
-are created on their first SSO login. Existing local users are never linked to
-SSO accounts automatically (prevents account takeover). Keep one local admin as
-emergency access, or set `LOCAL_LOGIN=false` once SSO works.
+Members of `OIDC_ADMIN_GROUP` are superadmins. Other users get access through
+**areas**: set a group on an area (*Settings → Areas*, e.g. `inventory-family`)
+and its members see and manage the devices and enrollment tokens of that area.
+Users are created on their first SSO login if a group grants them access;
+superadmin rights and group areas are synchronised at every login (changes in
+the identity provider apply at the next login, at the latest after
+`SESSION_LIFETIME`). Areas can also be assigned manually under *Settings →
+Users*; those are kept. The group name is compared with the `OIDC_GROUPS_CLAIM`
+claim (Authelia and Authentik send group names, Entra ID group IDs).
+
+Existing local users are never linked to SSO accounts automatically (prevents
+account takeover). Keep one local admin as emergency access, or set
+`LOCAL_LOGIN=false` once SSO works.
+
+Upgrading from a version without areas: all devices and tokens are in the
+area "Default" and all existing users are superadmins. New SSO users without a
+matching group are no longer admitted when `OIDC_ADMIN_GROUP` is empty.
 
 ### Authentik
 
@@ -51,7 +64,9 @@ emergency access, or set `LOCAL_LOGIN=false` once SSO works.
    a signing key selected (RS256), scopes `openid`, `email`, `profile` (the
    default *profile* mapping includes the `groups` claim).
 2. Create an application using this provider, slug e.g. `inventory`.
-3. Create a group `inventory-admins` and add your user.
+3. Create a group `inventory-admins` and add your user (superadmins). For areas,
+   create further groups (e.g. `inventory-family`) and add their members
+   directly (the default mapping only sends direct memberships).
 4. Environment (`BASE_URL` must be set to the public address):
 
 ```yaml

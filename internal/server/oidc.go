@@ -143,11 +143,13 @@ func (o *oidcProvider) handleCallback(w http.ResponseWriter, r *http.Request) {
 	groups := claimStrings(claims[o.s.cfg.OIDC.GroupsClaim])
 	_, hasName := claims["preferred_username"]
 	_, hasEmail := claims["email"]
-	if (len(groups) == 0 && o.s.cfg.OIDC.AdminGroup != "") || !hasName || !hasEmail {
+	if len(groups) == 0 || !hasName || !hasEmail {
 		if ui, err := p.UserInfo(r.Context(), oauth2.StaticTokenSource(tok)); err == nil {
 			var uc map[string]any
 			if ui.Claims(&uc) == nil {
-				groups = claimStrings(uc[o.s.cfg.OIDC.GroupsClaim])
+				if g := claimStrings(uc[o.s.cfg.OIDC.GroupsClaim]); len(g) > 0 {
+					groups = g
+				}
 				for k, v := range uc {
 					if _, ok := claims[k]; !ok {
 						claims[k] = v
@@ -156,17 +158,14 @@ func (o *oidcProvider) handleCallback(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if g := o.s.cfg.OIDC.AdminGroup; g != "" && !slices.Contains(groups, g) {
-		fail("Your account is not a member of the group required for this application.", errors.New("missing group "+g))
-		return
-	}
-	u, err := o.s.oidcUser(r.Context(), idt.Subject, claims)
+	u, err := o.s.oidcAccount(r.Context(), idt.Subject, claims, groups)
 	if err != nil {
-		fail("Could not create user: "+err.Error(), err)
-		return
-	}
-	if u.Disabled {
-		fail("Your account is disabled.", nil)
+		var ue userError
+		if errors.As(err, &ue) {
+			fail(string(ue), fmt.Errorf("groups %v", groups))
+		} else {
+			fail("Could not sign in: database error.", err)
+		}
 		return
 	}
 	if err := o.s.newSession(w, r, u); err != nil {
@@ -193,9 +192,65 @@ func claimStrings(v any) []string {
 	return nil
 }
 
+// userError is a login error shown to the user.
+type userError string
+
+func (e userError) Error() string { return string(e) }
+
+// oidcAccount finds or creates the user of an OIDC login and synchronises
+// superadmin rights (OIDC_ADMIN_GROUP) and area memberships (groups set on
+// the areas). Errors of type userError are shown to the user.
+func (s *Server) oidcAccount(ctx context.Context, sub string, claims map[string]any, groups []string) (*store.User, error) {
+	areas, err := s.store.ListAreas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var areaIDs []int64
+	for _, a := range areas {
+		if a.OIDCGroup != "" && slices.Contains(groups, a.OIDCGroup) {
+			areaIDs = append(areaIDs, a.ID)
+		}
+	}
+	adminGroup := s.cfg.OIDC.AdminGroup
+	super := adminGroup != "" && slices.Contains(groups, adminGroup)
+	u, err := s.oidcUser(ctx, sub, claims, super || len(areaIDs) > 0)
+	if errors.Is(err, errNoOIDCGroup) {
+		return nil, userError("Your account is not a member of a group that grants access to this application.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if u.Disabled {
+		return nil, userError("Your account is disabled.")
+	}
+	if adminGroup != "" && u.Superadmin != super {
+		// Without OIDC_ADMIN_GROUP the superadmin flag is managed in the UI.
+		if err := s.store.SetSuperadmin(ctx, u.ID, super); err != nil {
+			return nil, err
+		}
+		u.Superadmin = super
+		s.store.Audit(ctx, u.Username, "user.superadmin.oidc", fmt.Sprintf("superadmin=%v", super))
+	}
+	if err := s.store.SetMemberships(ctx, u.ID, store.MemberOIDC, areaIDs); err != nil {
+		return nil, err
+	}
+	acc, err := s.loadAccess(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	if !acc.Super && len(acc.Areas) == 0 {
+		return nil, userError(errNoArea)
+	}
+	return u, nil
+}
+
+// errNoOIDCGroup: an unknown user without a group granting access.
+var errNoOIDCGroup = errors.New("no group grants access")
+
 // oidcUser finds or creates the user for an OIDC subject. Existing local
-// users are never linked automatically, to avoid account takeover.
-func (s *Server) oidcUser(ctx context.Context, sub string, claims map[string]any) (*store.User, error) {
+// users are never linked automatically, to avoid account takeover. New users
+// are only created if a group grants them access (mayCreate).
+func (s *Server) oidcUser(ctx context.Context, sub string, claims map[string]any, mayCreate bool) (*store.User, error) {
 	email, _ := claims["email"].(string)
 	if u, err := s.store.UserBySubject(ctx, sub); err == nil {
 		if email != "" && u.Email != email {
@@ -204,6 +259,9 @@ func (s *Server) oidcUser(ctx context.Context, sub string, claims map[string]any
 		return u, nil
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
+	}
+	if !mayCreate {
+		return nil, errNoOIDCGroup
 	}
 	name, _ := claims["preferred_username"].(string)
 	if name == "" {

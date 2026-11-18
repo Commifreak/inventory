@@ -1,6 +1,6 @@
 {{define "content"}}{{$d := .Data}}
 <h1>Settings</h1>
-{{template "settingsnav" "alerts"}}
+{{template "settingsnav" (dict "A" "alerts" "S" .Super)}}
 {{if not $d.SMTP}}<div class="flash warn">E-mail is not configured yet – <a href="/settings/smtp">configure SMTP</a> to receive alerts.</div>{{end}}
 <form method="post" action="/settings/alerts">
 {{template "csrf" .CSRF}}

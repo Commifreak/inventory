@@ -1,6 +1,6 @@
-{{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}
+{{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}{{$p := .}}
 <h1>Settings</h1>
-{{template "settingsnav" "install"}}
+{{template "settingsnav" (dict "A" "install" "S" .Super)}}
 {{if not $d.BaseURLSet}}<div class="flash warn">BASE_URL is not set. Installers use the address you are using right now: <code>{{$d.BaseURL}}</code>. Set <code>BASE_URL</code> in your compose file if that is not the public address.</div>{{end}}
 
 <section class="card">
@@ -12,9 +12,9 @@
 
 {{range $d.Tokens}}{{if .Active}}
 <section class="card">
-  <div class="cardhead"><h2>{{.Name}}</h2>
+  <div class="cardhead"><h2>{{.Name}}{{if $p.MultiArea}} <span class="badge">{{index $p.AreaNames .AreaID}}</span>{{end}}</h2>
     <form method="post" action="/settings/tokens/{{.ID}}/revoke">{{template "csrf" $csrf}}<button class="danger small" data-confirm="Revoke token {{.Name}}? Existing installers with this token stop working.">Revoke</button></form></div>
-  <p class="sub">Created {{fmtTime .CreatedAt}} · used {{.UseCount}}× {{if not .LastUsedAt.IsZero}}· last {{ago .LastUsedAt}}{{end}}</p>
+  <p class="sub">{{if $p.MultiArea}}Devices installed with this token belong to area <b>{{index $p.AreaNames .AreaID}}</b> · {{end}}Created {{fmtTime .CreatedAt}} · used {{.UseCount}}× {{if not .LastUsedAt.IsZero}}· last {{ago .LastUsedAt}}{{end}}</p>
 
   <h3>Windows 10/11</h3>
   <div class="row wrap">
@@ -48,12 +48,13 @@
 
 <section class="card">
   <h2>Tokens</h2>
-  <table class="compact"><thead><tr><th>Name</th><th>Created</th><th>Uses</th><th>State</th></tr></thead><tbody>
-  {{range $d.Tokens}}<tr class="{{if not .Active}}dim{{end}}"><td>{{.Name}}</td><td>{{fmtTime .CreatedAt}}</td><td>{{.UseCount}}</td><td>{{if .Active}}active{{else}}revoked {{fmtTime .RevokedAt}}{{end}}</td></tr>{{end}}
+  <table class="compact"><thead><tr><th>Name</th>{{if $p.MultiArea}}<th>Area</th>{{end}}<th>Created</th><th>Uses</th><th>State</th></tr></thead><tbody>
+  {{range $d.Tokens}}<tr class="{{if not .Active}}dim{{end}}"><td>{{.Name}}</td>{{if $p.MultiArea}}<td>{{index $p.AreaNames .AreaID}}</td>{{end}}<td>{{fmtTime .CreatedAt}}</td><td>{{.UseCount}}</td><td>{{if .Active}}active{{else}}revoked {{fmtTime .RevokedAt}}{{end}}</td></tr>{{end}}
   </tbody></table>
   <form method="post" action="/settings/tokens" class="row">
     {{template "csrf" $csrf}}
     <input name="name" placeholder="Name, e.g. 'Family'" maxlength="100">
+    {{if $p.MultiArea}}<select name="area_id" required aria-label="Area"><option value="">Area …</option>{{range $p.Areas}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>{{end}}
     <button>Create token</button>
   </form>
 </section>

@@ -197,7 +197,11 @@ func (s *Server) ensureToken(ctx context.Context) error {
 	if len(toks) > 0 {
 		return nil
 	}
-	_, err = s.store.CreateToken(ctx, randomToken(24), "Default")
+	areas, err := s.store.ListAreas(ctx)
+	if err != nil || len(areas) == 0 {
+		return err
+	}
+	_, err = s.store.CreateToken(ctx, randomToken(24), "Default", areas[0].ID)
 	return err
 }
 

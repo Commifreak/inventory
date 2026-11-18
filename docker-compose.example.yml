@@ -16,7 +16,7 @@ services:
       # OIDC_ISSUER: https://auth.example.com/application/o/inventory/
       # OIDC_CLIENT_ID: inventory
       # OIDC_CLIENT_SECRET: ...
-      # OIDC_ADMIN_GROUP: inventory-admins
+      # OIDC_ADMIN_GROUP: inventory-admins   # superadmins; areas get their own groups in the UI
       # LOCAL_LOGIN: "false"     # disable password login once SSO works
     volumes:
       # Contains the database AND the encryption key - back it up.

@@ -45,6 +45,7 @@ func (w *webUI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /devices/{id}/collect", s.requireUser(w.handleDeviceCollect))
 	mux.HandleFunc("POST /devices/{id}/revoke", s.requireUser(w.handleDeviceRevoke))
 	mux.HandleFunc("POST /devices/{id}/delete", s.requireUser(w.handleDeviceDelete))
+	mux.HandleFunc("POST /devices/{id}/area", s.requireSuper(w.handleDeviceArea))
 	mux.HandleFunc("POST /devices/bulk", s.requireUser(w.handleDevicesBulk))
 	mux.HandleFunc("GET /alerts", s.requireUser(w.handleAlerts))
 
@@ -55,21 +56,27 @@ func (w *webUI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /settings/tokens", s.requireUser(w.handleTokenCreate))
 	mux.HandleFunc("POST /settings/tokens/{id}/revoke", s.requireUser(w.handleTokenRevoke))
 	mux.HandleFunc("GET /downloads/windows/{token}/{arch}", s.requireUser(w.handleWindowsDownload))
-	mux.HandleFunc("GET /settings/updates", s.requireUser(w.handleUpdatesPage))
-	mux.HandleFunc("POST /settings/updates", s.requireUser(w.handleUpdatesSave))
-	mux.HandleFunc("POST /settings/updates/promote", s.requireUser(w.handleUpdatesPromote))
-	mux.HandleFunc("GET /settings/collection", s.requireUser(w.handleCollectionPage))
-	mux.HandleFunc("POST /settings/collection", s.requireUser(w.handleCollectionSave))
-	mux.HandleFunc("GET /settings/alerts", s.requireUser(w.handleAlertSettingsPage))
-	mux.HandleFunc("POST /settings/alerts", s.requireUser(w.handleAlertSettingsSave))
-	mux.HandleFunc("GET /settings/smtp", s.requireUser(w.handleSMTPPage))
-	mux.HandleFunc("POST /settings/smtp", s.requireUser(w.handleSMTPSave))
-	mux.HandleFunc("POST /settings/smtp/test", s.requireUser(w.handleSMTPTest))
-	mux.HandleFunc("GET /settings/users", s.requireUser(w.handleUsersPage))
-	mux.HandleFunc("POST /settings/users", s.requireUser(w.handleUserCreate))
-	mux.HandleFunc("POST /settings/users/{id}/{action}", s.requireUser(w.handleUserAction))
-	mux.HandleFunc("GET /settings/general", s.requireUser(w.handleGeneralPage))
-	mux.HandleFunc("POST /settings/general", s.requireUser(w.handleGeneralSave))
+	mux.HandleFunc("GET /settings/areas", s.requireUser(w.handleAreasPage))
+	mux.HandleFunc("POST /settings/areas", s.requireSuper(w.handleAreaCreate))
+	mux.HandleFunc("POST /settings/areas/{id}", s.requireUser(w.handleAreaSave))
+	mux.HandleFunc("POST /settings/areas/{id}/delete", s.requireSuper(w.handleAreaDelete))
+	mux.HandleFunc("GET /settings/audit", s.requireUser(w.handleAuditPage))
+	// Global settings: superadmins only.
+	mux.HandleFunc("GET /settings/updates", s.requireSuper(w.handleUpdatesPage))
+	mux.HandleFunc("POST /settings/updates", s.requireSuper(w.handleUpdatesSave))
+	mux.HandleFunc("POST /settings/updates/promote", s.requireSuper(w.handleUpdatesPromote))
+	mux.HandleFunc("GET /settings/collection", s.requireSuper(w.handleCollectionPage))
+	mux.HandleFunc("POST /settings/collection", s.requireSuper(w.handleCollectionSave))
+	mux.HandleFunc("GET /settings/alerts", s.requireSuper(w.handleAlertSettingsPage))
+	mux.HandleFunc("POST /settings/alerts", s.requireSuper(w.handleAlertSettingsSave))
+	mux.HandleFunc("GET /settings/smtp", s.requireSuper(w.handleSMTPPage))
+	mux.HandleFunc("POST /settings/smtp", s.requireSuper(w.handleSMTPSave))
+	mux.HandleFunc("POST /settings/smtp/test", s.requireSuper(w.handleSMTPTest))
+	mux.HandleFunc("GET /settings/users", s.requireSuper(w.handleUsersPage))
+	mux.HandleFunc("POST /settings/users", s.requireSuper(w.handleUserCreate))
+	mux.HandleFunc("POST /settings/users/{id}/{action}", s.requireSuper(w.handleUserAction))
+	mux.HandleFunc("GET /settings/general", s.requireSuper(w.handleGeneralPage))
+	mux.HandleFunc("POST /settings/general", s.requireSuper(w.handleGeneralSave))
 }
 
 func actor(r *http.Request) string {
@@ -118,6 +125,11 @@ func (w *webUI) handleLogin(rw http.ResponseWriter, r *http.Request) {
 	if u.Disabled || !checkPassword(u.PasswordHash, pw) {
 		s.log.Warn("login failed", "user", username, "ip", ip)
 		w.renderLogin(rw, r, "Invalid user name or password.")
+		return
+	}
+	if acc, err := s.loadAccess(r.Context(), u); err != nil || (!acc.Super && len(acc.Areas) == 0) {
+		s.log.Warn("login refused: no area", "user", username, "ip", ip)
+		w.renderLogin(rw, r, errNoArea)
 		return
 	}
 	if err := s.newSession(rw, r, u); err != nil {
@@ -182,13 +194,25 @@ func (w *webUI) handlePasswordChange(rw http.ResponseWriter, r *http.Request) {
 func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 	s := w.s
 	ctx := r.Context()
-	devices, err := s.store.ListDevices(ctx)
+	acc := accessFrom(ctx)
+	all, err := s.store.ListDevices(ctx)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var dupes map[string][]store.Device
+	if acc.Super {
+		dupes = duplicateIdentities(all)
+	}
+	devices := slices.DeleteFunc(all, func(d store.Device) bool { return !acc.sees(d.AreaID) })
+	visible := map[string]bool{}
+	for _, d := range devices {
+		visible[d.ID] = true
+	}
 	snaps, _ := s.store.AllSnapshots(ctx, protocol.CollectSMART, protocol.CollectUpdates)
 	alerts, _ := s.store.OpenAlerts(ctx)
+	alerts = slices.DeleteFunc(alerts, func(a store.Alert) bool { return !visible[a.DeviceID] })
+	areaFilter, _ := strconv.ParseInt(r.URL.Query().Get("area"), 10, 64)
 	lastReports, _ := s.store.LastReports(ctx)
 	now := time.Now()
 	checkin := s.collectionConfig(ctx).CheckinIntervalSec
@@ -201,6 +225,10 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 		row.LastReport = lastReports[d.ID]
 		if latest := s.agents.Latest(d.OS, d.Arch, true); d.Managed == "" && latest != "" && CompareVersions(latest, d.AgentVersion) > 0 {
 			row.AgentLatest = latest
+		}
+		row.Duplicates = dupes[d.ID]
+		if areaFilter != 0 && d.AreaID != areaFilter {
+			continue
 		}
 		counts["total"]++
 		counts[row.Online]++
@@ -219,7 +247,7 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 	}
 	sortRows(rows, sortBy)
 	w.render(rw, r, "dashboard", page{Title: "Devices", Nav: "devices", Data: map[string]any{
-		"Rows": rows, "Counts": counts, "Q": r.URL.Query().Get("q"), "Problems": problems, "Sort": sortBy,
+		"Rows": rows, "Counts": counts, "Q": r.URL.Query().Get("q"), "Problems": problems, "Sort": sortBy, "Area": areaFilter,
 		"OpenAlerts": len(alerts), "Versions": s.agents.Versions(),
 	}})
 }
@@ -236,7 +264,8 @@ type diskView struct {
 
 func (w *webUI) loadDevice(rw http.ResponseWriter, r *http.Request) *store.Device {
 	d, err := w.s.store.DeviceByID(r.Context(), r.PathValue("id"))
-	if err != nil {
+	// Devices of other areas do not exist for the user (no 403: no hint).
+	if err != nil || !accessFrom(r.Context()).sees(d.AreaID) {
 		http.NotFound(rw, r)
 		return nil
 	}
@@ -259,6 +288,11 @@ func (w *webUI) handleDevice(rw http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	row := s.deviceRow(*d, snaps, alerts, now, s.collectionConfig(ctx).CheckinIntervalSec)
 	data := map[string]any{"D": d, "Row": row, "Tab": tab, "Snaps": snaps, "Alerts": alerts}
+	if accessFrom(ctx).Super {
+		all, _ := s.store.ListDevices(ctx)
+		data["Duplicates"] = duplicateIdentities(all)[d.ID]
+		data["AllAreas"] = s.visibleAreas(ctx)
+	}
 
 	if sys, ok := decodeSnap[protocol.SystemInfo](snaps, protocol.CollectSystem); ok {
 		data["Sys"] = sys
@@ -405,7 +439,7 @@ func (w *webUI) handleDeviceRules(rw http.ResponseWriter, r *http.Request) {
 		redirectError(rw, r, "/devices/"+d.ID+"?tab=alerts", err.Error())
 		return
 	}
-	w.s.store.Audit(r.Context(), actor(r), "device.rules", fmt.Sprintf("%s: disabled %s", d.ID, strings.Join(rules, ", ")))
+	w.s.auditArea(r, d.AreaID, "device.rules", fmt.Sprintf("%s: disabled %s", d.ID, strings.Join(rules, ", ")))
 	w.s.kickAlerts(d.ID)
 	redirectFlash(rw, r, "/devices/"+d.ID+"?tab=alerts", "Alert rules for this device saved.")
 }
@@ -438,7 +472,7 @@ func (w *webUI) handleDeviceSettings(rw http.ResponseWriter, r *http.Request) {
 		redirectError(rw, r, "/devices/"+d.ID+"?tab=agent", err.Error())
 		return
 	}
-	w.s.store.Audit(r.Context(), actor(r), "device.settings", d.ID)
+	w.s.auditArea(r, d.AreaID, "device.settings", d.ID)
 	w.s.kickAlerts(d.ID)
 	redirectFlash(rw, r, "/devices/"+d.ID+"?tab=agent", "Settings saved.")
 }
@@ -458,7 +492,7 @@ func (w *webUI) handleDeviceUpdateNow(rw http.ResponseWriter, r *http.Request) {
 	}
 	_ = w.s.store.SetUpdateNow(r.Context(), d.ID, v)
 	_ = w.s.store.SetUpdateState(r.Context(), d.ID, v, "", "")
-	w.s.store.Audit(r.Context(), actor(r), "device.update_now", d.ID+" -> "+v)
+	w.s.auditArea(r, d.AreaID, "device.update_now", d.ID+" -> "+v)
 	redirectFlash(rw, r, "/devices/"+d.ID+"?tab=agent", "The agent will update to "+v+" at its next check-in.")
 }
 
@@ -477,7 +511,7 @@ func (w *webUI) handleDeviceRevoke(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = w.s.store.RevokeDevice(r.Context(), d.ID)
-	w.s.store.Audit(r.Context(), actor(r), "device.revoked", d.ID+" "+d.Hostname)
+	w.s.auditArea(r, d.AreaID, "device.revoked", d.ID+" "+d.Hostname)
 	redirectFlash(rw, r, "/devices/"+d.ID+"?tab=agent", "Device revoked. The agent stops reporting; reinstalling it re-enrolls the device.")
 }
 
@@ -487,8 +521,30 @@ func (w *webUI) handleDeviceDelete(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = w.s.store.DeleteDevice(r.Context(), d.ID)
-	w.s.store.Audit(r.Context(), actor(r), "device.deleted", d.ID+" "+d.Hostname)
+	w.s.auditArea(r, d.AreaID, "device.deleted", d.ID+" "+d.Hostname)
 	redirectFlash(rw, r, "/", "Device "+d.Name()+" deleted.")
+}
+
+// handleDeviceArea moves a device with its history to another area (superadmins).
+func (w *webUI) handleDeviceArea(rw http.ResponseWriter, r *http.Request) {
+	d := w.loadDevice(rw, r)
+	if d == nil {
+		return
+	}
+	id, _ := strconv.ParseInt(r.PostFormValue("area_id"), 10, 64)
+	area, err := w.s.store.AreaByID(r.Context(), id)
+	if err != nil {
+		redirectError(rw, r, "/devices/"+d.ID, "Unknown area.")
+		return
+	}
+	if err := w.s.store.SetDeviceArea(r.Context(), d.ID, area.ID); err != nil {
+		redirectError(rw, r, "/devices/"+d.ID, err.Error())
+		return
+	}
+	msg := fmt.Sprintf("%s %s moved to area %s", d.ID, d.Hostname, area.Name)
+	w.s.auditArea(r, d.AreaID, "device.moved", msg)
+	w.s.auditArea(r, area.ID, "device.moved", msg)
+	redirectFlash(rw, r, "/devices/"+d.ID, "Device moved to area "+area.Name+".")
 }
 
 func (w *webUI) handleDevicesBulk(rw http.ResponseWriter, r *http.Request) {
@@ -501,11 +557,13 @@ func (w *webUI) handleDevicesBulk(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := 0
+	perArea := map[int64]int{}
 	for _, id := range ids {
 		d, err := w.s.store.DeviceByID(ctx, id)
-		if err != nil {
+		if err != nil || !accessFrom(ctx).sees(d.AreaID) {
 			continue
 		}
+		before := n
 		switch {
 		case strings.HasPrefix(action, "ring:"):
 			ring := strings.TrimPrefix(action, "ring:")
@@ -522,8 +580,13 @@ func (w *webUI) handleDevicesBulk(rw http.ResponseWriter, r *http.Request) {
 			_ = w.s.store.SetCollectNow(ctx, id, strings.Join(protocol.AllCollectors, ","))
 			n++
 		}
+		perArea[d.AreaID] += n - before
 	}
-	w.s.store.Audit(ctx, actor(r), "devices.bulk", fmt.Sprintf("%s on %d devices", action, n))
+	for area, cnt := range perArea {
+		if cnt > 0 {
+			w.s.auditArea(r, area, "devices.bulk", fmt.Sprintf("%s on %d devices", action, cnt))
+		}
+	}
 	redirectFlash(rw, r, "/", fmt.Sprintf("Applied to %d device(s).", n))
 }
 
@@ -534,12 +597,13 @@ func (w *webUI) handleDevicesBulk(rw http.ResponseWriter, r *http.Request) {
 func (w *webUI) handleAlerts(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	alerts, _ := w.s.store.RecentAlerts(ctx, 500)
-	devices, _ := w.s.store.ListDevices(ctx)
-	names := map[string]string{}
+	devices, _ := w.s.visibleDevices(ctx)
+	names, areas := map[string]string{}, map[string]int64{}
 	for _, d := range devices {
-		names[d.ID] = d.Name()
+		names[d.ID], areas[d.ID] = d.Name(), d.AreaID
 	}
-	w.render(rw, r, "alerts", page{Title: "Alerts", Nav: "alerts", Data: map[string]any{"Alerts": alerts, "Names": names, "SMTP": w.s.smtpSettings(ctx).Configured()}})
+	alerts = slices.DeleteFunc(alerts, func(a store.Alert) bool { _, ok := names[a.DeviceID]; return !ok })
+	w.render(rw, r, "alerts", page{Title: "Alerts", Nav: "alerts", Data: map[string]any{"Alerts": alerts, "Names": names, "Areas": areas, "SMTP": w.s.smtpSettings(ctx).Configured()}})
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +613,8 @@ func (w *webUI) handleAlerts(rw http.ResponseWriter, r *http.Request) {
 func (w *webUI) handleInstallPage(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	toks, _ := w.s.store.ListTokens(ctx)
+	acc := accessFrom(ctx)
+	toks = slices.DeleteFunc(toks, func(t store.EnrollmentToken) bool { return !acc.sees(t.AreaID) })
 	latest := map[string]string{}
 	for _, p := range []string{"windows/amd64", "windows/arm64", "linux/amd64", "linux/arm64", "linux/arm", "darwin/arm64", "darwin/amd64"} {
 		goos, goarch, _ := strings.Cut(p, "/")
@@ -565,25 +631,40 @@ func (w *webUI) handleTokenCreate(rw http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "Token " + time.Now().Format("2006-01-02")
 	}
-	if _, err := w.s.store.CreateToken(r.Context(), randomToken(24), truncate(name, 100)); err != nil {
+	areaID, _ := strconv.ParseInt(r.PostFormValue("area_id"), 10, 64)
+	if areaID == 0 {
+		if areas := w.s.visibleAreas(r.Context()); len(areas) == 1 {
+			areaID = areas[0].ID
+		}
+	}
+	if _, err := w.s.store.AreaByID(r.Context(), areaID); err != nil || !accessFrom(r.Context()).sees(areaID) {
+		redirectError(rw, r, "/settings/install", "Please choose an area for the token.")
+		return
+	}
+	if _, err := w.s.store.CreateToken(r.Context(), randomToken(24), truncate(name, 100), areaID); err != nil {
 		redirectError(rw, r, "/settings/install", err.Error())
 		return
 	}
-	w.s.store.Audit(r.Context(), actor(r), "token.created", name)
+	w.s.auditArea(r, areaID, "token.created", name)
 	redirectFlash(rw, r, "/settings/install", "Enrollment token created.")
 }
 
 func (w *webUI) handleTokenRevoke(rw http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	tok, err := w.s.store.TokenByID(r.Context(), id)
+	if err != nil || !accessFrom(r.Context()).sees(tok.AreaID) {
+		http.NotFound(rw, r)
+		return
+	}
 	_ = w.s.store.RevokeToken(r.Context(), id)
-	w.s.store.Audit(r.Context(), actor(r), "token.revoked", strconv.FormatInt(id, 10))
+	w.s.auditArea(r, tok.AreaID, "token.revoked", tok.Name)
 	redirectFlash(rw, r, "/settings/install", "Token revoked. Installers containing it no longer enroll new devices; enrolled devices keep working.")
 }
 
 func (w *webUI) handleWindowsDownload(rw http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("token"), 10, 64)
 	tok, err := w.s.store.TokenByID(r.Context(), id)
-	if err != nil || !tok.Active() {
+	if err != nil || !tok.Active() || !accessFrom(r.Context()).sees(tok.AreaID) {
 		http.Error(rw, "token not found or revoked", http.StatusNotFound)
 		return
 	}
@@ -832,89 +913,13 @@ func (w *webUI) handleSMTPTest(rw http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
-// settings: users
-// ---------------------------------------------------------------------------
-
-func (w *webUI) handleUsersPage(rw http.ResponseWriter, r *http.Request) {
-	users, _ := w.s.store.ListUsers(r.Context())
-	w.render(rw, r, "settings_users", page{Title: "Users", Nav: "settings", Data: map[string]any{"Users": users}})
-}
-
-func (w *webUI) handleUserCreate(rw http.ResponseWriter, r *http.Request) {
-	name := strings.TrimSpace(r.PostFormValue("username"))
-	pw := r.PostFormValue("password")
-	if name == "" || strings.ContainsAny(name, " \t/\\") {
-		redirectError(rw, r, "/settings/users", "Invalid user name.")
-		return
-	}
-	if err := validatePassword(pw); err != nil {
-		redirectError(rw, r, "/settings/users", err.Error())
-		return
-	}
-	hash, _ := hashPassword(pw)
-	if err := w.s.store.CreateUser(r.Context(), &store.User{Username: name, PasswordHash: hash, MustChangePassword: true}); err != nil {
-		redirectError(rw, r, "/settings/users", "Could not create user (name taken?)")
-		return
-	}
-	w.s.store.Audit(r.Context(), actor(r), "user.created", name)
-	redirectFlash(rw, r, "/settings/users", "User "+name+" created. They have to change the password at first login.")
-}
-
-func (w *webUI) handleUserAction(rw http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	u, err := w.s.store.UserByID(ctx, id)
-	if err != nil {
-		http.NotFound(rw, r)
-		return
-	}
-	me := userFrom(ctx)
-	switch r.PathValue("action") {
-	case "password":
-		pw := r.PostFormValue("password")
-		if err := validatePassword(pw); err != nil {
-			redirectError(rw, r, "/settings/users", err.Error())
-			return
-		}
-		hash, _ := hashPassword(pw)
-		_ = w.s.store.SetPassword(ctx, u.ID, hash, u.ID != me.ID)
-		_ = w.s.store.DeleteUserSessions(ctx, u.ID, sessionFrom(ctx).IDHash)
-		w.s.store.Audit(ctx, actor(r), "user.password_reset", u.Username)
-		redirectFlash(rw, r, "/settings/users", "Password of "+u.Username+" set.")
-	case "disable", "enable":
-		if u.ID == me.ID {
-			redirectError(rw, r, "/settings/users", "You cannot disable yourself.")
-			return
-		}
-		dis := r.PathValue("action") == "disable"
-		_ = w.s.store.SetUserDisabled(ctx, u.ID, dis)
-		if dis {
-			_ = w.s.store.DeleteUserSessions(ctx, u.ID, "")
-		}
-		w.s.store.Audit(ctx, actor(r), "user."+r.PathValue("action"), u.Username)
-		redirectFlash(rw, r, "/settings/users", "User "+u.Username+" updated.")
-	case "delete":
-		if u.ID == me.ID {
-			redirectError(rw, r, "/settings/users", "You cannot delete yourself.")
-			return
-		}
-		_ = w.s.store.DeleteUser(ctx, u.ID)
-		w.s.store.Audit(ctx, actor(r), "user.deleted", u.Username)
-		redirectFlash(rw, r, "/settings/users", "User "+u.Username+" deleted.")
-	default:
-		http.NotFound(rw, r)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // settings: general
 // ---------------------------------------------------------------------------
 
 func (w *webUI) handleGeneralPage(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	audit, _ := w.s.store.ListAudit(ctx, 200)
 	w.render(rw, r, "settings_general", page{Title: "General", Nav: "settings", Data: map[string]any{
-		"General": w.s.generalSettings(ctx), "Audit": audit, "Config": w.s.cfg, "TZ": time.Local.String(), "BaseURL": w.s.baseURL(r),
+		"General": w.s.generalSettings(ctx), "Config": w.s.cfg, "TZ": time.Local.String(), "BaseURL": w.s.baseURL(r),
 	}})
 }
 

@@ -9,6 +9,8 @@ inventory and e-mail alerts, in one Docker container.
 - **Zero-touch** – agents get all settings from the server and update themselves
   (signed updates, rollout rings, pause, manual update, automatic rollback).
 - **Read-only monitoring** – agents only report; the server cannot run commands on clients.
+- **Areas** – several users manage their own devices and enrollment tokens on one
+  server (assigned via SSO groups or manually); superadmins see everything.
 
 | Area | What is collected |
 |---|---|

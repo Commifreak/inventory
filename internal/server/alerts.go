@@ -650,11 +650,18 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 		opened, resolved, renotify []store.Alert
 	}
 	batches := map[string]*batch{}
+	// The recipients of the device's area get its alerts in addition to the
+	// global (or rule specific) recipients.
+	var areaTo []string
+	if area, err := s.store.AreaByID(ctx, d.AreaID); err == nil {
+		areaTo = area.Recipients
+	}
 	add := func(a store.Alert, kind string) {
 		to := as.Recipients
 		if rc, ok := as.Rules[a.Rule]; ok && len(rc.Recipients) > 0 {
 			to = rc.Recipients
 		}
+		to = mergeRecipients(to, areaTo)
 		if len(to) == 0 {
 			return
 		}
@@ -697,6 +704,24 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 			_ = s.store.MarkAlertNotified(ctx, a.ID, now)
 		}
 	}
+}
+
+// mergeRecipients joins recipient lists without duplicates (case insensitive).
+func mergeRecipients(lists ...[]string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, l := range lists {
+		for _, r := range l {
+			k := strings.ToLower(strings.TrimSpace(r))
+			if k == "" || seen[k] {
+				continue
+			}
+			seen[k] = true
+			out = append(out, strings.TrimSpace(r))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolved, renotify []store.Alert) (string, string) {

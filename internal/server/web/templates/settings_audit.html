@@ -1,0 +1,16 @@
+{{define "content"}}{{$d := .Data}}{{$p := .}}
+<h1>Settings</h1>
+{{template "settingsnav" (dict "A" "audit" "S" .Super)}}
+<section class="card">
+  <h2>Audit log</h2>
+  <p class="hint">{{if .Super}}All entries. Entries without an area (logins, users, global settings) are only visible to superadmins.{{else}}Entries of your area{{if .MultiArea}}s{{end}}.{{end}}</p>
+  {{if $d.Audit}}
+  <div class="tablewrap"><table class="compact">
+    <thead><tr><th>Time</th>{{if or .Super .MultiArea}}<th>Area</th>{{end}}<th>User</th><th>Action</th><th>Details</th></tr></thead>
+    <tbody>{{range $d.Audit}}<tr><td class="nowrap">{{fmtTime .Time}}</td>
+      {{if or $p.Super $p.MultiArea}}<td>{{if .AreaID}}{{with index $p.AreaNames .AreaID}}{{.}}{{else}}<span class="muted">deleted area</span>{{end}}{{else}}<span class="muted">global</span>{{end}}</td>{{end}}
+      <td>{{if .Username}}{{.Username}}{{else}}<span class="muted">system</span>{{end}}</td><td class="mono small">{{.Action}}</td><td class="small">{{.Details}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No entries yet.</p>{{end}}
+</section>
+{{end}}

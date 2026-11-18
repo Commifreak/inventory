@@ -1,14 +1,24 @@
 {{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}{{$me := .User}}
 <h1>Settings</h1>
-{{template "settingsnav" "users"}}
+{{template "settingsnav" (dict "A" "users" "S" .Super)}}
 <section class="card">
   <h2>Users</h2>
-  <p class="hint">All users are administrators. Users signing in via single sign-on are created automatically.</p>
+  <p class="hint"><b>Superadmins</b> may do everything. Other users manage the devices and enrollment tokens of their <a href="/settings/areas">areas</a>.
+  {{if $d.OIDC}}Single sign-on users are created at their first login if a group grants them access; their group areas{{if $d.AdminGroup}} and superadmin rights (group <code>{{$d.AdminGroup}}</code>){{end}} are synchronised at every login. Areas assigned here are kept in addition.{{end}}</p>
   <div class="tablewrap"><table class="compact">
-    <thead><tr><th>User</th><th>Type</th><th>Last login</th><th>State</th><th>Actions</th></tr></thead>
-    <tbody>{{range $d.Users}}<tr class="{{if .Disabled}}dim{{end}}">
+    <thead><tr><th>User</th><th>Type</th><th>Role</th><th>Areas</th><th>Last login</th><th>State</th><th>Actions</th></tr></thead>
+    <tbody>{{range $d.Users}}{{$u := .}}<tr class="{{if .Disabled}}dim{{end}}">
       <td><b>{{.Username}}</b>{{if .Email}} <span class="sub">{{.Email}}</span>{{end}}{{if eq .ID $me.ID}} <span class="badge">you</span>{{end}}</td>
       <td>{{if .OIDCSubject}}SSO{{else}}local{{end}}</td>
+      <td>{{if .Superadmin}}<span class="badge st-info">superadmin</span>{{else}}area user{{end}}
+        {{if and .OIDCSubject $d.AdminGroup}}<div class="sub">via group</div>
+        {{else if ne .ID $me.ID}}<form method="post" action="/settings/users/{{.ID}}/superadmin" class="inline">{{template "csrf" $csrf}}<input type="hidden" name="superadmin" value="{{if .Superadmin}}0{{else}}1{{end}}"><button class="small link">{{if .Superadmin}}remove superadmin{{else}}make superadmin{{end}}</button></form>{{end}}</td>
+      <td>{{if .Areas}}{{join .Areas ", "}}{{end}}{{if .OIDC}}<div class="sub">via group: {{join .OIDC ", "}}</div>{{end}}
+        <details><summary class="small">{{if .Manual}}edit manual areas{{else}}assign areas{{end}}</summary>
+          <form method="post" action="/settings/users/{{.ID}}/areas" class="checklist">{{template "csrf" $csrf}}
+            {{range $d.AllAreas}}<label class="check small"><input type="checkbox" name="area" value="{{.ID}}" {{if hasID $u.Manual .ID}}checked{{end}}> {{.Name}}</label>{{end}}
+            <button class="small">Save areas</button></form></details>
+        {{if and (not .Superadmin) (not .Areas)}}<div class="warn-text small">no access</div>{{end}}</td>
       <td>{{fmtTime .LastLoginAt}}</td>
       <td>{{if .Disabled}}disabled{{else if .MustChangePassword}}must change password{{else}}active{{end}}</td>
       <td class="actions">
@@ -27,6 +37,10 @@
     {{template "csrf" $csrf}}
     <label>User name <input name="username" required autocomplete="off"></label>
     <label>Initial password <small class="muted">(min. 12 characters, must be changed at first login)</small> <input type="password" name="password" minlength="12" maxlength="72" required autocomplete="new-password"></label>
+    <label class="check"><input type="checkbox" name="superadmin" value="1"> Superadmin</label>
+    <fieldset class="checklist"><legend>Areas</legend>
+      {{range $d.AllAreas}}<label class="check"><input type="checkbox" name="area" value="{{.ID}}"> {{.Name}}</label>{{end}}
+    </fieldset>
     <button class="primary">Add user</button>
   </form>
 </section>

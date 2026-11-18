@@ -24,10 +24,14 @@ import (
 	"github.com/commifreak/inventory/internal/tag"
 )
 
-type fakeMailer struct{ sent []string }
+type fakeMailer struct {
+	sent []string
+	to   [][]string
+}
 
 func (m *fakeMailer) Send(_ context.Context, to []string, subject, body string) error {
 	m.sent = append(m.sent, subject)
+	m.to = append(m.to, to)
 	return nil
 }
 
@@ -161,7 +165,7 @@ func TestEndToEnd(t *testing.T) {
 		resp.Body.Close()
 	}
 	// Both attempts are in the audit log, with only a token prefix.
-	audit, _ := s.store.ListAudit(ctx, 10)
+	audit, _ := s.store.ListAudit(ctx, 10, true, nil)
 	var found []string
 	for _, a := range audit {
 		if strings.HasSuffix(a.Action, ".rejected") {

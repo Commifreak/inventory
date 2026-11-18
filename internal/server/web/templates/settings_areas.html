@@ -1,0 +1,44 @@
+{{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}{{$super := .Super}}
+<h1>Settings</h1>
+{{template "settingsnav" (dict "A" "areas" "S" .Super)}}
+<section class="card">
+  <h2>{{if .Super}}Areas{{else}}Your area{{if .MultiArea}}s{{end}}{{end}}</h2>
+  {{if .Super}}<p class="hint">Every device and enrollment token belongs to one area. Users who are not superadmins only see the devices, tokens, alerts and audit entries of their areas.
+  Users get an area through its single sign-on group (synchronised at every login) or manually under <a href="/settings/users">Users</a>.</p>
+  {{else}}<p class="hint">Alert mails for the devices of an area go to its recipients (in addition to the recipients set by the administrator).</p>{{end}}
+  {{if not $d.SMTP}}<p class="warn-text">E-mail is not configured on this server yet – recipients get no mails until it is.</p>{{end}}
+</section>
+
+{{range $d.Areas}}
+<section class="card">
+  <div class="cardhead"><h2>{{.Name}}</h2>
+    {{if and $super (eq .Devices 0)}}<form method="post" action="/settings/areas/{{.ID}}/delete">{{template "csrf" $csrf}}<button class="danger small" data-confirm="Delete area {{.Name}}? Its enrollment tokens are deleted as well.">Delete</button></form>{{end}}</div>
+  <p class="sub">{{.Devices}} device{{if ne .Devices 1}}s{{end}} ·
+    {{if .Members}}members: {{range $i, $m := .Members}}{{if $i}} · {{end}}{{$m.Username}}{{range $m.Sources}} <span class="badge">{{if eq . "oidc"}}via group{{else}}manual{{end}}</span>{{end}}{{end}}{{else}}no members{{end}}</p>
+  <form method="post" action="/settings/areas/{{.ID}}">
+    {{template "csrf" $csrf}}
+    {{if $super}}
+    <div class="row wrap">
+      <label>Name <input name="name" value="{{.Name}}" maxlength="60" required></label>
+      <label>Single sign-on group <small class="muted">(members get this area; empty = none)</small> <input name="oidc_group" value="{{.OIDCGroup}}" maxlength="200" placeholder="e.g. inventory-family"></label>
+    </div>
+    {{end}}
+    <label>Alert recipients <small class="muted">(comma separated)</small> <input name="recipients" value="{{join .Recipients ", "}}" placeholder="you@example.com"></label>
+    <button class="primary">Save</button>
+  </form>
+</section>
+{{end}}
+
+{{if .Super}}
+<section class="card narrowcard">
+  <h2>New area</h2>
+  <form method="post" action="/settings/areas">
+    {{template "csrf" $csrf}}
+    <label>Name <input name="name" maxlength="60" required placeholder="e.g. Family"></label>
+    <label>Single sign-on group <small class="muted">(optional)</small> <input name="oidc_group" maxlength="200"></label>
+    {{if $d.OIDC}}<p class="hint">The group name is compared with the <code>{{$d.GroupsClaim}}</code> claim of the identity provider (Authelia, Authentik: the group name; Entra ID: the group ID).</p>{{end}}
+    <button class="primary">Create area</button>
+  </form>
+</section>
+{{end}}
+{{end}}

@@ -14,6 +14,8 @@ discussed first.
 - Alerts via SMTP, configurable on the server.
 - Everything (UI, mails, code, docs) in English. Project may become open source (MIT).
 - Anyone can run their own server; per-installation secrets are generated automatically.
+- Areas: several users can each manage their own devices on one server
+  (see [Areas](#areas)).
 
 ## Architecture
 
@@ -153,14 +155,48 @@ firewall that is off on purpose.
 Notifications: one mail per device and evaluation with new/still open/resolved
 alerts, reminders every N hours (default 24), optional resolve mails, per-device mute.
 
+## Areas
+
+- Every device and enrollment token belongs to exactly one area; a user can be
+  a member of several areas. Existing data moved to the area "Default" on
+  upgrade, existing users became superadmins.
+- **Superadmins** may do everything: global settings (updates, collection,
+  alert rules, SMTP, general), users, areas, moving devices between areas.
+- **Area users** see only the devices, enrollment tokens, alerts and audit
+  entries of their areas (devices of other areas answer 404, also via direct
+  URLs). They may change everything per device (name, notes, ring, pin, update
+  now, collect now, mute, rules, offline threshold, revoke, delete), create and
+  revoke tokens of their areas and set the alert recipients of their areas.
+  No read-only role (could be added later). Area users cannot create users.
+- Membership: OIDC groups set on the area (synchronised at every login: a new
+  group adds the area, a removed group removes it) and/or manual assignment
+  in the UI (kept across logins). `OIDC_ADMIN_GROUP` grants superadmin rights
+  (synchronised at login); without it, superadmin rights of SSO users are
+  managed in the UI. SSO users are created at their first login only if a
+  group grants them access. Users who are neither superadmin nor member of an
+  area cannot sign in. Rights are read on every request.
+- Enrollment: a device is only recognised again (re-enrollment) within the
+  area of the token used. Enrolling the same hardware with a token of another
+  area creates a new device there; the old one stays in its area, goes offline
+  and raises the offline alert there. Superadmins see a hint on both devices
+  and can move a device with its history.
+- Notifications: the recipients of a device's area get its alerts in addition
+  to the global (or rule specific) recipients, without duplicate mails.
+- Areas are created, renamed and deleted by superadmins; only empty areas
+  can be deleted (their tokens are deleted with them), the last area cannot.
+  The last active superadmin cannot be disabled, deleted or demoted.
+- Audit entries carry their area; entries without area (logins, users, global
+  settings, unknown enrollment tokens) are visible to superadmins only.
+
 ## Server security
 
-- Local users (all admins) with bcrypt passwords, forced change of the initial
+- Local users with bcrypt passwords, forced change of the initial
   password, login rate limiting; OIDC (Authentik, Authelia, …) with group
-  restriction; local login can be disabled. No viewer role.
+  based superadmin rights and areas; local login can be disabled. Roles:
+  superadmin and area user (see Areas).
 - Sessions in the database, `HttpOnly`/`SameSite=Lax` cookies, CSRF tokens,
   strict Content Security Policy.
 - Per-installation secrets generated on first start (`DATA_DIR/secrets`), SMTP
   password stored encrypted (AES-GCM).
 - Agent API separated under `/api/agent/` so it can be excluded from forward auth.
-- Audit log of administrative actions.
+- Audit log of administrative actions (per area for area users).

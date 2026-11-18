@@ -1,6 +1,6 @@
 {{define "content"}}{{$d := .Data}}{{$csrf := .CSRF}}
 <h1>Settings</h1>
-{{template "settingsnav" "updates"}}
+{{template "settingsnav" (dict "A" "updates" "S" .Super)}}
 <section class="card">
   <h2>Update policy</h2>
   <p>Agents update themselves to the version of their <b>ring</b>. A ring either follows the <i>latest</i> version or stays on an approved version.

@@ -11,7 +11,8 @@ import (
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("not found")
 
-// User is a web UI user. All users are administrators.
+// User is a web UI user. Superadmins may do everything; other users manage
+// the devices and enrollment tokens of their areas.
 type User struct {
 	ID                 int64
 	Username           string
@@ -22,16 +23,17 @@ type User struct {
 	Disabled           bool
 	CreatedAt          time.Time
 	LastLoginAt        time.Time
+	Superadmin         bool
 }
 
-const userCols = `id, username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, last_login_at`
+const userCols = `id, username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, last_login_at, superadmin`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var pw, sub, email sql.NullString
 	var created int64
 	var last sql.NullInt64
-	if err := row.Scan(&u.ID, &u.Username, &pw, &sub, &email, &u.MustChangePassword, &u.Disabled, &created, &last); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &pw, &sub, &email, &u.MustChangePassword, &u.Disabled, &created, &last, &u.Superadmin); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -79,8 +81,8 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 }
 
 func (s *Store) CreateUser(ctx context.Context, u *User) error {
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO users(username, password_hash, oidc_subject, email, must_change_password, disabled, created_at) VALUES(?,?,?,?,?,?,?)`,
-		u.Username, nullStr(u.PasswordHash), nullStr(u.OIDCSubject), nullStr(u.Email), u.MustChangePassword, u.Disabled, time.Now().Unix())
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO users(username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, superadmin) VALUES(?,?,?,?,?,?,?,?)`,
+		u.Username, nullStr(u.PasswordHash), nullStr(u.OIDCSubject), nullStr(u.Email), u.MustChangePassword, u.Disabled, time.Now().Unix(), u.Superadmin)
 	if err != nil {
 		return err
 	}
@@ -96,6 +98,18 @@ func (s *Store) SetPassword(ctx context.Context, id int64, hash string, mustChan
 func (s *Store) SetUserDisabled(ctx context.Context, id int64, disabled bool) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE users SET disabled=? WHERE id=?`, disabled, id)
 	return err
+}
+
+func (s *Store) SetSuperadmin(ctx context.Context, id int64, on bool) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE users SET superadmin=? WHERE id=?`, on, id)
+	return err
+}
+
+// CountActiveSuperadmins counts enabled superadmins other than exceptID.
+func (s *Store) CountActiveSuperadmins(ctx context.Context, exceptID int64) (int, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE superadmin=1 AND disabled=0 AND id<>?`, exceptID).Scan(&n)
+	return n, err
 }
 
 func (s *Store) UpdateUserOIDC(ctx context.Context, id int64, sub, email string) error {
@@ -202,14 +216,37 @@ type AuditEntry struct {
 	Username string
 	Action   string
 	Details  string
+	AreaID   int64 // 0 = global
 }
 
+// Audit records a global entry (only visible to superadmins).
 func (s *Store) Audit(ctx context.Context, user, action, details string) {
-	_, _ = s.DB.ExecContext(ctx, `INSERT INTO audit_log(ts, username, action, details) VALUES(?,?,?,?)`, time.Now().Unix(), user, action, details)
+	s.AuditArea(ctx, 0, user, action, details)
 }
 
-func (s *Store) ListAudit(ctx context.Context, limit int) ([]AuditEntry, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, ts, COALESCE(username,''), action, COALESCE(details,'') FROM audit_log ORDER BY id DESC LIMIT ?`, limit)
+// AuditArea records an entry belonging to an area (0 = global).
+func (s *Store) AuditArea(ctx context.Context, areaID int64, user, action, details string) {
+	var area any
+	if areaID != 0 {
+		area = areaID
+	}
+	_, _ = s.DB.ExecContext(ctx, `INSERT INTO audit_log(ts, username, action, details, area_id) VALUES(?,?,?,?,?)`, time.Now().Unix(), user, action, details, area)
+}
+
+// ListAudit returns the newest entries. With all=false only entries of the
+// given areas are returned.
+func (s *Store) ListAudit(ctx context.Context, limit int, all bool, areas []int64) ([]AuditEntry, error) {
+	q, args := `SELECT id, ts, COALESCE(username,''), action, COALESCE(details,''), COALESCE(area_id,0) FROM audit_log`, []any{}
+	if !all {
+		if len(areas) == 0 {
+			return nil, nil
+		}
+		q += ` WHERE area_id IN (` + placeholders(len(areas)) + `)`
+		for _, a := range areas {
+			args = append(args, a)
+		}
+	}
+	rows, err := s.DB.QueryContext(ctx, q+` ORDER BY id DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +255,7 @@ func (s *Store) ListAudit(ctx context.Context, limit int) ([]AuditEntry, error) 
 	for rows.Next() {
 		var a AuditEntry
 		var ts int64
-		if err := rows.Scan(&a.ID, &ts, &a.Username, &a.Action, &a.Details); err != nil {
+		if err := rows.Scan(&a.ID, &ts, &a.Username, &a.Action, &a.Details, &a.AreaID); err != nil {
 			return nil, err
 		}
 		a.Time = time.Unix(ts, 0)

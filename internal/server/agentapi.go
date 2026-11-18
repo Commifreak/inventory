@@ -115,23 +115,24 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	secret := randomToken(32)
 	ctx := r.Context()
-	d, err := s.store.FindDeviceByIdentity(ctx, id.HardwareID, id.MachineID)
+	// Only devices of the token's area are recognised (no takeover across areas).
+	d, err := s.store.FindDeviceByIdentity(ctx, tok.AreaID, id.HardwareID, id.MachineID)
 	switch {
 	case err == nil:
 		if err := s.store.ReEnrollDevice(ctx, d.ID, hashToken(secret), id.Hostname, id.OS, id.Arch, req.AgentVersion, tok.ID); err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
 			return
 		}
-		s.store.Audit(ctx, "", "device.reenrolled", fmt.Sprintf("%s (%s) from %s", id.Hostname, d.ID, ip))
+		s.store.AuditArea(ctx, d.AreaID, "", "device.reenrolled", fmt.Sprintf("%s (%s) from %s", id.Hostname, d.ID, ip))
 		s.log.Info("device re-enrolled", "device", d.ID, "hostname", id.Hostname, "ip", ip)
 	case errors.Is(err, store.ErrNotFound):
 		d = &store.Device{ID: newDeviceID(), Hostname: id.Hostname, OS: id.OS, Arch: id.Arch, HardwareID: id.HardwareID, MachineID: id.MachineID,
-			CredentialHash: hashToken(secret), EnrollmentTokenID: tok.ID, EnrolledAt: time.Now(), AgentVersion: req.AgentVersion, Ring: RingStable}
+			CredentialHash: hashToken(secret), EnrollmentTokenID: tok.ID, EnrolledAt: time.Now(), AgentVersion: req.AgentVersion, Ring: RingStable, AreaID: tok.AreaID}
 		if err := s.store.CreateDevice(ctx, d); err != nil {
 			jsonError(w, http.StatusInternalServerError, "database error")
 			return
 		}
-		s.store.Audit(ctx, "", "device.enrolled", fmt.Sprintf("%s (%s) from %s", id.Hostname, d.ID, ip))
+		s.store.AuditArea(ctx, d.AreaID, "", "device.enrolled", fmt.Sprintf("%s (%s) from %s", id.Hostname, d.ID, ip))
 		s.log.Info("device enrolled", "device", d.ID, "hostname", id.Hostname, "ip", ip)
 	default:
 		jsonError(w, http.StatusInternalServerError, "database error")
@@ -316,7 +317,11 @@ func (s *Server) rejectedToken(r *http.Request, what, presented string, tok *sto
 	if what != "enrollment" {
 		action = "installer.rejected"
 	}
-	s.store.Audit(r.Context(), "", action, msg)
+	var area int64
+	if tok != nil {
+		area = tok.AreaID // revoked token: the area it belonged to
+	}
+	s.store.AuditArea(r.Context(), area, "", action, msg)
 	return reason
 }
 

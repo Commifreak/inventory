@@ -1,6 +1,6 @@
 {{define "content"}}{{$d := .Data}}
 <h1>Settings</h1>
-{{template "settingsnav" "collection"}}
+{{template "settingsnav" (dict "A" "collection" "S" .Super)}}
 <section class="card">
   <h2>Data collection</h2>
   <p>Agents receive these settings at every check-in. "Collect now" on a device runs all collectors immediately.</p>

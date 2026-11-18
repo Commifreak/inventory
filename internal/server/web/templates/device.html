@@ -1,14 +1,18 @@
 {{define "content"}}
-{{$d := .Data}}{{$dev := $d.D}}{{$csrf := .CSRF}}
+{{$d := .Data}}{{$dev := $d.D}}{{$csrf := .CSRF}}{{$p := .}}
 <div class="pagehead">
   <div>
     <h1>{{template "online" $d.Row.Online}} {{$dev.Name}} {{template "status" $d.Row.Overall}} <a class="small rename" href="?tab=agent#settings" title="Change display name and notes">Rename</a></h1>
-    <p class="sub">{{$dev.Hostname}} · {{if $dev.OSName}}{{$dev.OSName}}{{else}}{{$dev.OS}}{{end}} · {{$dev.Arch}} · last seen {{ago $dev.LastSeenAt}}{{if $dev.LastIP}} from {{$dev.LastIP}}{{end}}
+    <p class="sub">{{if .MultiArea}}<span class="badge">{{index .AreaNames $dev.AreaID}}</span> {{end}}{{$dev.Hostname}} · {{if $dev.OSName}}{{$dev.OSName}}{{else}}{{$dev.OS}}{{end}} · {{$dev.Arch}} · last seen {{ago $dev.LastSeenAt}}{{if $dev.LastIP}} from {{$dev.LastIP}}{{end}}
     {{if not $dev.RevokedAt.IsZero}} · <span class="err-text">revoked {{fmtTime $dev.RevokedAt}}</span>{{end}}</p>
     {{if $dev.Notes}}<p class="notes">{{$dev.Notes}}</p>{{end}}
   </div>
   <form method="post" action="/devices/{{$dev.ID}}/collect">{{template "csrf" $csrf}}<input type="hidden" name="tab" value="{{$d.Tab}}"><button title="Ask the agent to collect everything at its next check-in">Collect now</button></form>
 </div>
+
+{{if $d.Duplicates}}<div class="flash warn">The same hardware is also enrolled in another area – probably reinstalled with a token of that area:
+  {{range $i, $o := $d.Duplicates}}{{if $i}}, {{end}}<a href="/devices/{{$o.ID}}">{{$o.Name}}</a> ({{index $p.AreaNames $o.AreaID}}, last seen {{ago $o.LastSeenAt}}){{end}}.
+  Move the device you want to keep to the right area on the <a href="?tab=agent#area">Agent</a> tab and delete the stale entry.</div>{{end}}
 
 <nav class="tabs">
   <a href="?tab=overview" {{if eq $d.Tab "overview"}}class="active"{{end}}>Overview</a>
@@ -402,7 +406,7 @@
 <section class="card">
   <details {{if $dev.DisabledRules}}open{{end}}>
     <summary><b>Rules for this device</b>{{if $dev.DisabledRules}} – {{len $dev.DisabledRules}} disabled{{end}}</summary>
-    <p class="hint">Rules checked here are not evaluated for this device (e.g. a firewall that is off on purpose); their open alerts are resolved. Global rule settings: <a href="/settings/alerts">Settings → Alert rules</a>.</p>
+    <p class="hint">Rules checked here are not evaluated for this device (e.g. a firewall that is off on purpose); their open alerts are resolved.{{if .Super}} Global rule settings: <a href="/settings/alerts">Settings → Alert rules</a>.{{end}}</p>
     <form method="post" action="/devices/{{$dev.ID}}/rules">
       {{template "csrf" .CSRF}}
       <div class="rulechecks">
@@ -492,6 +496,18 @@
     {{else}}<td colspan="3" class="muted">not collected yet</td>{{end}}</tr>{{end}}
   </tbody></table>
 </section>
+
+{{if $d.AllAreas}}
+<section class="card">
+  <h2 id="area">Area</h2>
+  <form method="post" action="/devices/{{$dev.ID}}/area" class="row">
+    {{template "csrf" $csrf}}
+    <select name="area_id" aria-label="Area">{{range $d.AllAreas}}<option value="{{.ID}}" {{if eq .ID $dev.AreaID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <button>Move device</button>
+  </form>
+  <p class="hint">Moves the device with all its data. Only users of the new area (and superadmins) see it afterwards; the agent keeps reporting.</p>
+</section>
+{{end}}
 
 <section class="card danger">
   <h2>Remove device</h2>

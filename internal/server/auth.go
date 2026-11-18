@@ -23,6 +23,7 @@ const (
 	ctxUser ctxKey = iota
 	ctxSession
 	ctxDevice
+	ctxAccess
 )
 
 func userFrom(ctx context.Context) *store.User {
@@ -50,7 +51,7 @@ func (s *Server) ensureAdmin(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.store.CreateUser(ctx, &store.User{Username: "admin", PasswordHash: hash, MustChangePassword: true}); err != nil {
+	if err := s.store.CreateUser(ctx, &store.User{Username: "admin", PasswordHash: hash, MustChangePassword: true, Superadmin: true}); err != nil {
 		return err
 	}
 	if generated {
@@ -164,8 +165,24 @@ func (s *Server) requireUser(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/account/password", http.StatusSeeOther)
 			return
 		}
+		// Rights are read on every request: changes apply immediately.
+		acc, err := s.loadAccess(r.Context(), u)
+		if err != nil {
+			http.Error(w, "database error", http.StatusInternalServerError)
+			return
+		}
+		if !acc.Super && len(acc.Areas) == 0 {
+			s.clearSession(w, r)
+			if r.Method == http.MethodGet {
+				http.Redirect(w, r, "/login?error="+urlQuery(errNoArea), http.StatusSeeOther)
+				return
+			}
+			http.Error(w, errNoArea, http.StatusForbidden)
+			return
+		}
 		ctx := context.WithValue(r.Context(), ctxUser, u)
 		ctx = context.WithValue(ctx, ctxSession, sess)
+		ctx = context.WithValue(ctx, ctxAccess, acc)
 		next(w, r.WithContext(ctx))
 	}
 }

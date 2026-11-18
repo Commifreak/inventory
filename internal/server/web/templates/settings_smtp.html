@@ -1,6 +1,6 @@
 {{define "content"}}{{$d := .Data}}{{$c := $d.SMTP}}
 <h1>Settings</h1>
-{{template "settingsnav" "smtp"}}
+{{template "settingsnav" (dict "A" "smtp" "S" .Super)}}
 <div class="grid">
 <section class="card">
   <h2>SMTP server</h2>

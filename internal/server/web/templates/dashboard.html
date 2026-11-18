@@ -1,5 +1,5 @@
 {{define "content"}}
-{{$d := .Data}}
+{{$d := .Data}}{{$p := .}}
 <div class="pagehead">
   <h1>Devices</h1>
   <div class="stats">
@@ -13,6 +13,10 @@
 
 <form class="toolbar" method="get" action="/">
   <input type="search" name="q" value="{{$d.Q}}" placeholder="Search name, OS, IP …">
+  {{if .MultiArea}}<select name="area" data-autosubmit aria-label="Area">
+    <option value="">All areas</option>
+    {{range .Areas}}<option value="{{.ID}}" {{if eq $d.Area .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>{{end}}
   <label class="check"><input type="checkbox" name="problems" value="1" {{if $d.Problems}}checked{{end}} data-autosubmit> Only problems</label>
   <select name="sort" data-autosubmit>
     <option value="status" {{if eq $d.Sort "status"}}selected{{end}}>Sort: status</option>
@@ -39,14 +43,16 @@
 <table class="list">
   <thead><tr>
     <th class="cb"><input type="checkbox" data-selectall="ids" aria-label="Select all"></th>
-    <th>Device</th><th>Status</th><th>System disk</th><th>Disks</th><th>Updates</th><th title="green: online · yellow: silent for up to 24 h · grey: offline">Last seen</th><th title="Latest collector data received">Last report</th><th title="green: latest agent · yellow: newer agent available">Agent</th>
+    <th>Device</th>{{if .MultiArea}}<th>Area</th>{{end}}<th>Status</th><th>System disk</th><th>Disks</th><th>Updates</th><th title="green: online · yellow: silent for up to 24 h · grey: offline">Last seen</th><th title="Latest collector data received">Last report</th><th title="green: latest agent · yellow: newer agent available">Agent</th>
   </tr></thead>
   <tbody>
   {{range $d.Rows}}
   <tr>
     <td class="cb"><input type="checkbox" name="ids" value="{{.D.ID}}" aria-label="Select {{.D.Name}}"></td>
     <td><a class="strong" href="/devices/{{.D.ID}}">{{.D.Name}}</a>
-      <div class="sub">{{if ne .D.Name .D.Hostname}}{{.D.Hostname}} · {{end}}{{if .OSName}}{{.OSName}}{{else}}{{.D.OS}}{{end}} · {{.D.Arch}}</div></td>
+      <div class="sub">{{if ne .D.Name .D.Hostname}}{{.D.Hostname}} · {{end}}{{if .OSName}}{{.OSName}}{{else}}{{.D.OS}}{{end}} · {{.D.Arch}}</div>
+      {{range .Duplicates}}<div class="sub warn-text" title="The same hardware is enrolled in another area – probably reinstalled with a token of that area">⚠ also in {{index $p.AreaNames .AreaID}}: <a href="/devices/{{.ID}}">{{.Name}}</a></div>{{end}}</td>
+    {{if $p.MultiArea}}<td>{{index $p.AreaNames .D.AreaID}}</td>{{end}}
     <td class="nowrap">{{template "status" .Overall}}{{if .Alerts}} <a href="/devices/{{.D.ID}}?tab=alerts" class="sub">{{.Alerts}} alert{{if gt .Alerts 1}}s{{end}}</a>{{end}}{{if .D.AlertsMuted}} <span class="sub" title="Notifications muted">🔕</span>{{end}}</td>
     <td>{{if .SysDisk}}{{template "status" .SysDiskStatus}}
       <div class="sub">{{.SysDisk.Model}}{{if .SysDisk.Temperature}} · {{deref .SysDisk.Temperature}} °C{{end}}{{if .SysDisk.PercentUsed}} · {{deref .SysDisk.PercentUsed}}% used{{end}}</div>

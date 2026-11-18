@@ -23,6 +23,7 @@ type EnrollmentToken struct {
 	RevokedAt  time.Time
 	LastUsedAt time.Time
 	UseCount   int
+	AreaID     int64
 }
 
 func (t EnrollmentToken) Active() bool { return t.RevokedAt.IsZero() }
@@ -31,7 +32,7 @@ func scanToken(row interface{ Scan(...any) error }) (*EnrollmentToken, error) {
 	var t EnrollmentToken
 	var c int64
 	var r, l sql.NullInt64
-	if err := row.Scan(&t.ID, &t.Token, &t.Name, &c, &r, &l, &t.UseCount); err != nil {
+	if err := row.Scan(&t.ID, &t.Token, &t.Name, &c, &r, &l, &t.UseCount, &t.AreaID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -41,10 +42,10 @@ func scanToken(row interface{ Scan(...any) error }) (*EnrollmentToken, error) {
 	return &t, nil
 }
 
-const tokenCols = `id, token, name, created_at, revoked_at, last_used_at, use_count`
+const tokenCols = `id, token, name, created_at, revoked_at, last_used_at, use_count, area_id`
 
-func (s *Store) CreateToken(ctx context.Context, token, name string) (*EnrollmentToken, error) {
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO enrollment_tokens(token, name, created_at) VALUES(?,?,?)`, token, name, time.Now().Unix())
+func (s *Store) CreateToken(ctx context.Context, token, name string, areaID int64) (*EnrollmentToken, error) {
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO enrollment_tokens(token, name, created_at, area_id) VALUES(?,?,?,?)`, token, name, time.Now().Unix(), areaID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +123,7 @@ type Device struct {
 	RevokedAt         time.Time
 	DisabledRules     []string // alert rules disabled for this device
 	Managed           string   // "home-assistant": agent updated by Home Assistant
+	AreaID            int64
 }
 
 // Name returns the display name or the hostname.
@@ -135,7 +137,7 @@ func (d Device) Name() string {
 const deviceCols = `id, hostname, display_name, os, arch, hardware_id, machine_id, credential_hash, enrollment_token_id,
  enrolled_at, last_seen_at, last_ip, agent_version, boot_time, clock_skew_sec, os_name, ring, pinned_version,
  update_now_version, update_target, update_state, update_error, update_changed_at, collect_now, offline_alert_hours,
- alerts_muted, notes, revoked_at, disabled_rules, managed`
+ alerts_muted, notes, revoked_at, disabled_rules, managed, area_id`
 
 func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	var d Device
@@ -145,7 +147,7 @@ func scanDevice(row interface{ Scan(...any) error }) (*Device, error) {
 	err := row.Scan(&d.ID, &d.Hostname, &dn, &d.OS, &d.Arch, &hw, &mid, &d.CredentialHash, &tok,
 		&enrolled, &last, &ip, &av, &boot, &skew, &osn, &d.Ring, &pin,
 		&unow, &utarget, &ust, &uerr, &uchg, &cnow, &d.OfflineAlertHours,
-		&d.AlertsMuted, &notes, &rev, &disabled, &managed)
+		&d.AlertsMuted, &notes, &rev, &disabled, &managed, &d.AreaID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -170,14 +172,15 @@ func (s *Store) DeviceByID(ctx context.Context, id string) (*Device, error) {
 	return scanDevice(s.DB.QueryRowContext(ctx, `SELECT `+deviceCols+` FROM devices WHERE id=?`, id))
 }
 
-// FindDeviceByIdentity finds a non-revoked device by hardware or machine id.
-// Both must match if both are known on either side.
-func (s *Store) FindDeviceByIdentity(ctx context.Context, hardwareID, machineID string) (*Device, error) {
+// FindDeviceByIdentity finds a device of an area by hardware or machine id.
+// Both must match if both are known on either side. Devices of other areas
+// are never matched: an area cannot take over another area's device history.
+func (s *Store) FindDeviceByIdentity(ctx context.Context, areaID int64, hardwareID, machineID string) (*Device, error) {
 	if hardwareID == "" && machineID == "" {
 		return nil, ErrNotFound
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+deviceCols+` FROM devices WHERE (hardware_id=? AND ?<>'') OR (machine_id=? AND ?<>'') ORDER BY enrolled_at DESC`,
-		hardwareID, hardwareID, machineID, machineID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+deviceCols+` FROM devices WHERE area_id=? AND ((hardware_id=? AND ?<>'') OR (machine_id=? AND ?<>'')) ORDER BY enrolled_at DESC`,
+		areaID, hardwareID, hardwareID, machineID, machineID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,21 +191,7 @@ func (s *Store) FindDeviceByIdentity(ctx context.Context, hardwareID, machineID 
 		if err != nil {
 			return nil, err
 		}
-		hwMatch := hardwareID != "" && strings.EqualFold(d.HardwareID, hardwareID)
-		midMatch := machineID != "" && strings.EqualFold(d.MachineID, machineID)
-		// Cloned VMs share the hardware UUID only rarely, cloned disks share the machine id:
-		// require hardware match, and machine match if both sides know it, or
-		// fall back to machine match when no hardware id is available.
-		ok := false
-		switch {
-		case hwMatch && (machineID == "" || d.MachineID == "" || midMatch):
-			ok = true
-		case hardwareID == "" && midMatch:
-			ok = true
-		case d.HardwareID == "" && midMatch:
-			ok = true
-		}
-		if ok && best == nil {
+		if SameIdentity(d.HardwareID, d.MachineID, hardwareID, machineID) && best == nil {
 			best = d
 		}
 	}
@@ -210,6 +199,23 @@ func (s *Store) FindDeviceByIdentity(ctx context.Context, hardwareID, machineID 
 		return nil, ErrNotFound
 	}
 	return best, rows.Err()
+}
+
+// SameIdentity reports whether two hardware/machine id pairs describe the
+// same machine. Cloned VMs share the hardware UUID only rarely, cloned disks
+// share the machine id: require a hardware match, and a machine match if both
+// sides know it, or fall back to a machine match when one side has no
+// hardware id.
+func SameIdentity(hwA, midA, hwB, midB string) bool {
+	hwMatch := hwA != "" && strings.EqualFold(hwA, hwB)
+	midMatch := midA != "" && strings.EqualFold(midA, midB)
+	switch {
+	case hwMatch && (midA == "" || midB == "" || midMatch):
+		return true
+	case (hwA == "" || hwB == "") && midMatch:
+		return true
+	}
+	return false
 }
 
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
@@ -230,9 +236,9 @@ func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 }
 
 func (s *Store) CreateDevice(ctx context.Context, d *Device) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO devices(id, hostname, os, arch, hardware_id, machine_id, credential_hash, enrollment_token_id, enrolled_at, agent_version, ring)
-VALUES(?,?,?,?,?,?,?,?,?,?,?)`, d.ID, d.Hostname, d.OS, d.Arch, nullStr(d.HardwareID), nullStr(d.MachineID), d.CredentialHash,
-		d.EnrollmentTokenID, d.EnrolledAt.Unix(), nullStr(d.AgentVersion), d.Ring)
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO devices(id, hostname, os, arch, hardware_id, machine_id, credential_hash, enrollment_token_id, enrolled_at, agent_version, ring, area_id)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, d.ID, d.Hostname, d.OS, d.Arch, nullStr(d.HardwareID), nullStr(d.MachineID), d.CredentialHash,
+		d.EnrollmentTokenID, d.EnrolledAt.Unix(), nullStr(d.AgentVersion), d.Ring, d.AreaID)
 	return err
 }
 
@@ -249,6 +255,12 @@ func (s *Store) Checkin(ctx context.Context, id string, at time.Time, ip, hostna
 	_, err := s.DB.ExecContext(ctx, `UPDATE devices SET last_seen_at=?, last_ip=?, hostname=?, agent_version=?, boot_time=?, clock_skew_sec=?,
  hardware_id=COALESCE(NULLIF(?,''), hardware_id), machine_id=COALESCE(NULLIF(?,''), machine_id) WHERE id=?`,
 		at.Unix(), ip, hostname, nullStr(agentVersion), ut(boot), skew, hardwareID, machineID, id)
+	return err
+}
+
+// SetDeviceArea moves a device (with its history) to another area.
+func (s *Store) SetDeviceArea(ctx context.Context, id string, areaID int64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE devices SET area_id=? WHERE id=?`, areaID, id)
 	return err
 }
 

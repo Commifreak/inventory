@@ -1,13 +1,13 @@
-{{define "content"}}{{$d := .Data}}
+{{define "content"}}{{$d := .Data}}{{$p := .}}
 <div class="pagehead"><h1>Alerts</h1></div>
-{{if not $d.SMTP}}<div class="flash warn">E-mail is not configured – alerts are only shown here. <a href="/settings/smtp">Configure SMTP</a></div>{{end}}
+{{if not $d.SMTP}}<div class="flash warn">E-mail is not configured – alerts are only shown here.{{if .Super}} <a href="/settings/smtp">Configure SMTP</a>{{end}}</div>{{end}}
 <section class="card">
   {{if $d.Alerts}}
   <div class="tablewrap"><table class="compact">
-    <thead><tr><th>State</th><th>Device</th><th>Alert</th><th>Message</th><th>Opened</th><th>Resolved</th><th>Notified</th></tr></thead>
+    <thead><tr><th>State</th><th>Device</th>{{if .MultiArea}}<th>Area</th>{{end}}<th>Alert</th><th>Message</th><th>Opened</th><th>Resolved</th><th>Notified</th></tr></thead>
     <tbody>{{range $d.Alerts}}<tr class="{{if eq .State "resolved"}}dim{{end}}">
       <td>{{if eq .State "open"}}<span class="badge st-{{.Severity}}">{{.Severity}}</span>{{else}}<span class="badge">resolved</span>{{end}}</td>
-      <td><a href="/devices/{{.DeviceID}}?tab=alerts">{{index $d.Names .DeviceID}}</a></td>
+      <td><a href="/devices/{{.DeviceID}}?tab=alerts">{{index $d.Names .DeviceID}}</a></td>{{if $p.MultiArea}}<td>{{index $p.AreaNames (index $d.Areas .DeviceID)}}</td>{{end}}
       <td>{{ruleTitle .Rule}}</td><td class="small">{{.Message}}</td>
       <td class="nowrap">{{fmtTime .OpenedAt}}</td><td class="nowrap">{{fmtTime .ResolvedAt}}</td>
       <td class="nowrap">{{if .NotifyCount}}{{.NotifyCount}}× · {{ago .LastNotifiedAt}}{{else}}<span class="muted">–</span>{{end}}</td></tr>{{end}}</tbody>

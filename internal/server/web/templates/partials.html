@@ -10,14 +10,17 @@
 
 {{define "settingsnav"}}
 <nav class="subnav">
-  <a href="/settings/install" {{if eq . "install"}}class="active"{{end}}>Install agents</a>
-  <a href="/settings/updates" {{if eq . "updates"}}class="active"{{end}}>Agent updates</a>
-  <a href="/settings/collection" {{if eq . "collection"}}class="active"{{end}}>Data collection</a>
-  <a href="/settings/alerts" {{if eq . "alerts"}}class="active"{{end}}>Alert rules</a>
-  <a href="/settings/smtp" {{if eq . "smtp"}}class="active"{{end}}>E-mail</a>
-  <a href="/settings/users" {{if eq . "users"}}class="active"{{end}}>Users</a>
-  <a href="/settings/general" {{if eq . "general"}}class="active"{{end}}>General</a>
+  <a href="/settings/install" {{if eq .A "install"}}class="active"{{end}}>Install agents</a>
+  {{if .S}}<a href="/settings/updates" {{if eq .A "updates"}}class="active"{{end}}>Agent updates</a>
+  <a href="/settings/collection" {{if eq .A "collection"}}class="active"{{end}}>Data collection</a>
+  <a href="/settings/alerts" {{if eq .A "alerts"}}class="active"{{end}}>Alert rules</a>
+  <a href="/settings/smtp" {{if eq .A "smtp"}}class="active"{{end}}>E-mail</a>
+  <a href="/settings/users" {{if eq .A "users"}}class="active"{{end}}>Users</a>{{end}}
+  <a href="/settings/areas" {{if eq .A "areas"}}class="active"{{end}}>{{if .S}}Areas{{else}}Area{{end}}</a>
+  <a href="/settings/audit" {{if eq .A "audit"}}class="active"{{end}}>Audit log</a>
+  {{if .S}}<a href="/settings/general" {{if eq .A "general"}}class="active"{{end}}>General</a>{{end}}
 </nav>
 {{end}}
 
 {{define "sectionmeta"}}{{if .}}<p class="meta">Collected {{ago .CollectedAt}} ({{fmtTime .CollectedAt}}){{if .Error}} · <span class="err-text">Error: {{.Error}}</span>{{end}}{{range .Warnings}}<br><span class="warn-text">⚠ {{.}}</span>{{end}}</p>{{else}}<p class="meta">Not collected yet.</p>{{end}}{{end}}
+

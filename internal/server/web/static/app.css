@@ -173,3 +173,8 @@ h1 .rename { font-size: .85rem; font-weight: 400; }
 .controller h3 { margin: 0 0 .2rem; font-size: 1rem; }
 .rulechecks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .2rem 1rem; margin: .5rem 0 1rem; }
 .fwprofile { white-space: nowrap; margin-right: .6rem; }
+/* area assignment */
+.checklist { display: flex; flex-direction: column; gap: .15rem; margin: .3rem 0 .7rem; }
+.checklist label.check { margin: 0; }
+fieldset.checklist { border: 1px solid var(--border); border-radius: var(--radius); padding: .4rem .8rem .6rem; }
+fieldset.checklist legend { font-weight: 500; padding: 0 .3rem; }

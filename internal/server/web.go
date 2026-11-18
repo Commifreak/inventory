@@ -109,6 +109,7 @@ func newWebUI(s *Server) (*webUI, error) {
 		},
 		"ruleCatalog": func() []RuleDef { return RuleCatalog },
 		"hasString":   func(list []string, v string) bool { return slices.Contains(list, v) },
+		"hasID":       func(list []int64, v int64) bool { return slices.Contains(list, v) },
 		"ruleTitle": func(id string) string {
 			if d := ruleDef(id); d != nil {
 				return d.Title
@@ -182,7 +183,13 @@ type page struct {
 	Local    bool
 	// Warnings are server problems shown to signed-in users on every page.
 	Warnings []string
-	Data     any
+	// Super: the user is a superadmin. AreaNames: names of the visible areas;
+	// MultiArea: more than one is visible (area column and filter are shown).
+	Super     bool
+	AreaNames map[int64]string
+	Areas     []store.Area
+	MultiArea bool
+	Data      any
 }
 
 func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p page) {
@@ -199,6 +206,15 @@ func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p p
 	}
 	p.Version = w.s.cfg.Version
 	p.Instance = w.s.generalSettings(r.Context()).InstanceName
+	if acc := accessFrom(r.Context()); acc != nil {
+		p.Super = acc.Super
+		p.Areas = w.s.visibleAreas(r.Context())
+		p.AreaNames = map[int64]string{}
+		for _, a := range p.Areas {
+			p.AreaNames[a.ID] = a.Name
+		}
+		p.MultiArea = len(p.Areas) > 1
+	}
 	if p.User != nil {
 		if msg := w.s.eol.Warning(time.Now()); msg != "" {
 			p.Warnings = append(p.Warnings, msg)
@@ -397,6 +413,7 @@ type DeviceRow struct {
 	AgentLatest   string    // newest signed agent for the platform, if newer than the installed one
 	LastReport    time.Time // latest collector data received
 	Overall       string
+	Duplicates    []store.Device // same hardware in other areas (superadmins only)
 }
 
 func (s *Server) onlineState(d *store.Device, now time.Time, checkin int) string {
