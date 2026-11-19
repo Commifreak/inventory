@@ -56,7 +56,7 @@ func parseSystemProfilerStorage(out string, hw *protocol.HardwareInfo) {
 		mods := items(m)
 		if len(mods) == 0 && str(m, "SPMemoryDataType") != "" { // Apple silicon: unified memory
 			hw.MemoryModules = append(hw.MemoryModules, protocol.MemoryModule{Locator: "unified memory", Installed: true, Soldered: true,
-				SizeBytes: parseSizeGB(str(m, "SPMemoryDataType")), Type: str(m, "dimm_type"), Manufacturer: str(m, "dimm_manufacturer")})
+				SizeBytes: parseSizeGB(str(m, "SPMemoryDataType")), Type: str(m, "dimm_type"), Manufacturer: memoryVendor(str(m, "dimm_manufacturer"))})
 			continue
 		}
 		for _, d := range mods {
@@ -67,7 +67,7 @@ func parseSystemProfilerStorage(out string, hw *protocol.HardwareInfo) {
 				continue
 			}
 			mm.Installed, mm.SizeBytes = true, parseSizeGB(size)
-			mm.Type, mm.Manufacturer, mm.PartNumber, mm.Serial = str(d, "dimm_type"), str(d, "dimm_manufacturer"), str(d, "dimm_part_number"), str(d, "dimm_serial_number")
+			mm.Type, mm.Manufacturer, mm.PartNumber, mm.Serial = str(d, "dimm_type"), memoryVendor(str(d, "dimm_manufacturer")), str(d, "dimm_part_number"), str(d, "dimm_serial_number")
 			if f := strings.Fields(str(d, "dimm_speed")); len(f) > 0 {
 				mm.SpeedMTs, _ = strconv.Atoi(f[0])
 			}

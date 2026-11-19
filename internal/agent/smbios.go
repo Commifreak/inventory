@@ -168,7 +168,7 @@ func smbiosMemory(structs []smbiosStruct) (slots int, maxBytes uint64, modules [
 			}
 			m.SpeedMTs = smbiosSpeed(s, 0x15, 0x54)
 			m.ConfiguredMTs = smbiosSpeed(s, 0x20, 0x58)
-			m.Manufacturer = s.str(0x17)
+			m.Manufacturer = memoryVendor(s.str(0x17))
 			m.Serial = s.str(0x18)
 			m.PartNumber = s.str(0x1A)
 		}
