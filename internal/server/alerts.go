@@ -62,7 +62,7 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"celsius", "Threshold", "°C", 65}}},
 	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "Used endurance of an SSD (NVMe 'percentage used', SATA/SAS endurance indicator or wear attributes) or eMMC life time estimate at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"percent", "Threshold", "%", 90}}},
-	{ID: "nvme_critical", Group: "Disks", Title: "NVMe critical warning", Description: "NVMe critical warning flags set or available spare below threshold.",
+	{ID: "nvme_critical", Group: "Disks", Title: "SSD critical warning", Description: "NVMe critical warning flags set, or the available spare (reserve blocks) of an NVMe/SATA SSD at or below the vendor threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true},
 	{ID: "disk_space", Group: "Disks", Title: "Low disk space", Description: "Free space on a local volume below the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, Params: []ParamDef{{"percent", "Free below", "%", 10}}},
