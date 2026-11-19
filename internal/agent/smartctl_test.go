@@ -17,6 +17,11 @@ func TestSATASSDWear(t *testing.T) {
 	if d.PercentUsed == nil || *d.PercentUsed != 4 {
 		t.Fatalf("device statistics: %+v", d.PercentUsed)
 	}
+	// Reserve blocks: Samsung 180, vendor threshold.
+	d, _ = ParseSmartctl([]byte(head + `"ata_smart_attributes":{"table":[{"id":180,"name":"Unused_Rsvd_Blk_Cnt_Tot","value":97,"worst":97,"thresh":10,"raw":{"value":917,"string":"917"}}]}}`))
+	if d.AvailableSpare == nil || *d.AvailableSpare != 97 || d.SpareThreshold == nil || *d.SpareThreshold != 10 {
+		t.Fatalf("spare: %+v %+v", d.AvailableSpare, d.SpareThreshold)
+	}
 	// Hard disks have no wear.
 	d, _ = ParseSmartctl([]byte(`{"device":{"name":"/dev/sdb","protocol":"ATA"},"rotation_rate":5400,` + attrs + `}`))
 	if d.PercentUsed != nil {

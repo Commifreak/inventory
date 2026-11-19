@@ -110,6 +110,35 @@ type smartctlInfo struct {
 // Percent_Lifetime_Remain, Remaining_Lifetime_Perc.
 var ataWearAttrs = map[int]bool{231: true, 233: true, 177: true, 173: true, 202: true, 169: true}
 
+// ataSpareAttrs are vendor attributes whose normalised value is the remaining
+// reserve (spare) blocks in percent, in order of preference:
+// Available_Reservd_Space (232), Available Reserved Space (Intel 170),
+// Unused_Rsvd_Blk_Cnt_Tot (Samsung 180).
+var ataSpareAttrs = []int{232, 170, 180}
+
+// ssdSpare returns the remaining reserve blocks of a SATA SSD and the
+// vendor's threshold (nil if the vendor sets none).
+func (in *smartctlInfo) ssdSpare() (spare, threshold *int) {
+	if in.ATAAttributes == nil {
+		return nil, nil
+	}
+	for _, id := range ataSpareAttrs {
+		for _, at := range in.ATAAttributes.Table {
+			if at.ID != id || at.Value <= 0 || at.Value > 100 {
+				continue
+			}
+			v := at.Value
+			spare = &v
+			if at.Thresh > 0 && at.Thresh < 100 {
+				t := at.Thresh
+				threshold = &t
+			}
+			return spare, threshold
+		}
+	}
+	return nil, nil
+}
+
 // ssdPercentUsed returns the used endurance of a SATA/SAS SSD: the
 // standardised indicator if reported, otherwise the worst vendor attribute.
 func (in *smartctlInfo) ssdPercentUsed() *int {
@@ -323,6 +352,9 @@ func ParseSmartctl(out []byte) (protocol.Disk, error) {
 	}
 	if d.MediaType == "SSD" && d.PercentUsed == nil {
 		d.PercentUsed = in.ssdPercentUsed()
+	}
+	if d.MediaType == "SSD" && d.AvailableSpare == nil {
+		d.AvailableSpare, d.SpareThreshold = in.ssdSpare()
 	}
 	if in.SCSIGrownDefects != nil && d.Reallocated == nil {
 		d.Reallocated = in.SCSIGrownDefects
