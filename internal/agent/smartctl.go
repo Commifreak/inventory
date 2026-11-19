@@ -92,6 +92,54 @@ type smartctlInfo struct {
 		MediaErrors      int64 `json:"media_errors"`
 	} `json:"nvme_smart_health_information_log"`
 	SCSIGrownDefects *int64 `json:"scsi_grown_defect_list"`
+	// ATA device statistics (-l devstat), page 7: "Percentage Used Endurance Indicator".
+	ATADeviceStatistics *struct {
+		Pages []struct {
+			Table []struct {
+				Name  string `json:"name"`
+				Value *int64 `json:"value"`
+			} `json:"table"`
+		} `json:"pages"`
+	} `json:"ata_device_statistics"`
+	SCSIEnduranceUsed *int `json:"scsi_percentage_used_endurance_indicator"`
+}
+
+// ataWearAttrs are vendor attributes whose normalised value is the remaining
+// life in percent (100 = new): SSD_Life_Left, Media_Wearout_Indicator,
+// Wear_Leveling_Count (Samsung 177, Samsung OEM/Micron 173),
+// Percent_Lifetime_Remain, Remaining_Lifetime_Perc.
+var ataWearAttrs = map[int]bool{231: true, 233: true, 177: true, 173: true, 202: true, 169: true}
+
+// ssdPercentUsed returns the used endurance of a SATA/SAS SSD: the
+// standardised indicator if reported, otherwise the worst vendor attribute.
+func (in *smartctlInfo) ssdPercentUsed() *int {
+	if in.SCSIEnduranceUsed != nil {
+		v := *in.SCSIEnduranceUsed
+		return &v
+	}
+	if ds := in.ATADeviceStatistics; ds != nil {
+		for _, p := range ds.Pages {
+			for _, e := range p.Table {
+				if e.Value != nil && strings.EqualFold(e.Name, "Percentage Used Endurance Indicator") {
+					v := int(*e.Value)
+					return &v
+				}
+			}
+		}
+	}
+	if in.ATAAttributes == nil {
+		return nil
+	}
+	used := -1
+	for _, at := range in.ATAAttributes.Table {
+		if ataWearAttrs[at.ID] && at.Value > 0 && at.Value <= 100 && 100-at.Value > used {
+			used = 100 - at.Value
+		}
+	}
+	if used < 0 {
+		return nil
+	}
+	return &used
 }
 
 // smartctlVersion formats the version array.
@@ -133,6 +181,10 @@ func SmartctlDisks(ctx context.Context, bin string) (disks []protocol.Disk, vers
 	seen := map[string]bool{}
 	for _, d := range scan.Devices {
 		args := []string{"-a"}
+		if !strings.HasPrefix(d.Type, "nvme") {
+			// Device statistics hold the standardised SSD endurance indicator.
+			args = append(args, "-l", "devstat")
+		}
 		if d.Type != "" {
 			args = append(args, "-d", d.Type)
 		}
@@ -268,6 +320,9 @@ func ParseSmartctl(out []byte) (protocol.Disk, error) {
 				}
 			}
 		}
+	}
+	if d.MediaType == "SSD" && d.PercentUsed == nil {
+		d.PercentUsed = in.ssdPercentUsed()
 	}
 	if in.SCSIGrownDefects != nil && d.Reallocated == nil {
 		d.Reallocated = in.SCSIGrownDefects
