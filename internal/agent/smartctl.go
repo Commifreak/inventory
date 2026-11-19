@@ -339,6 +339,18 @@ func ParseSmartctl(out []byte) (protocol.Disk, error) {
 				d.Uncorrectable = &v
 			case 199:
 				d.CRCErrors = &v
+			case 187:
+				d.ReportedUncorrect = &v
+			case 188:
+				d.CommandTimeout = &v
+			case 10:
+				d.SpinRetry = &v
+			case 174: // Unexpect_Power_Loss_Ct
+				d.UnsafeShutdowns = &v
+			case 192: // Power-Off_Retract_Count / unsafe shutdown count
+				if d.UnsafeShutdowns == nil {
+					d.UnsafeShutdowns = &v
+				}
 			case 194, 190:
 				// Temperature raw values pack min/max into the upper bytes.
 				if d.Temperature == nil {

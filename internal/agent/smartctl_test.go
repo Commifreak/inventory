@@ -28,3 +28,15 @@ func TestSATASSDWear(t *testing.T) {
 		t.Fatalf("HDD wear: %d", *d.PercentUsed)
 	}
 }
+
+func TestATACounters(t *testing.T) {
+	d, err := ParseSmartctl([]byte(`{"device":{"name":"/dev/sda","protocol":"ATA"},"rotation_rate":7200,"ata_smart_attributes":{"table":[
+{"id":10,"name":"Spin_Retry_Count","value":100,"worst":100,"thresh":97,"raw":{"value":2,"string":"2"}},
+{"id":187,"name":"Reported_Uncorrect","value":100,"worst":100,"thresh":0,"raw":{"value":5,"string":"5"}},
+{"id":188,"name":"Command_Timeout","value":100,"worst":100,"thresh":0,"raw":{"value":1,"string":"0 0 1"}},
+{"id":192,"name":"Power-Off_Retract_Count","value":100,"worst":100,"thresh":0,"raw":{"value":40,"string":"40"}},
+{"id":174,"name":"Unexpect_Power_Loss_Ct","value":100,"worst":100,"thresh":0,"raw":{"value":12,"string":"12"}}]}}`))
+	if err != nil || *d.SpinRetry != 2 || *d.ReportedUncorrect != 5 || *d.CommandTimeout != 1 || *d.UnsafeShutdowns != 12 {
+		t.Fatalf("counters: %+v %v", d, err)
+	}
+}

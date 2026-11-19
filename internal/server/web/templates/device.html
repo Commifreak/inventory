@@ -222,6 +222,9 @@
     {{if .Pending}}<div><span>Pending</span><b>{{deref .Pending}}</b></div>{{end}}
     {{if .Uncorrectable}}<div><span>Uncorrectable</span><b>{{deref .Uncorrectable}}</b></div>{{end}}
     {{if .CRCErrors}}<div><span>CRC errors</span><b>{{deref .CRCErrors}}</b></div>{{end}}
+    {{if .ReportedUncorrect}}<div><span>Reported uncorrectable</span><b>{{deref .ReportedUncorrect}}</b></div>{{end}}
+    {{if .CommandTimeout}}<div><span>Command timeouts</span><b>{{deref .CommandTimeout}}</b></div>{{end}}
+    {{if .SpinRetry}}<div><span>Spin retries</span><b>{{deref .SpinRetry}}</b></div>{{end}}
     {{if .PercentUsed}}<div><span>Wear (used)</span><b>{{deref .PercentUsed}} %</b></div>{{end}}
     {{if .AvailableSpare}}<div><span>Available spare</span><b>{{deref .AvailableSpare}} %{{if .SpareThreshold}} <small class="muted">(min {{deref .SpareThreshold}} %)</small>{{end}}</b></div>{{end}}
     {{if .MediaErrors}}<div><span>Media errors</span><b>{{deref .MediaErrors}}</b></div>{{end}}
