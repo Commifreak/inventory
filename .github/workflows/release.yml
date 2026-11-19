@@ -20,7 +20,7 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # tags for scripts/version.sh
       - name: version
@@ -31,20 +31,20 @@ jobs:
           else
             echo "version=$(REQUIRE_TAG=1 scripts/version.sh "edge.$(date -u +%Y%m%d%H%M)")" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: false
       - name: changelog
         # "What's new" in the web UI: merged pull requests per release, bundled in the image.
         run: go run ./cmd/inventory-release changelog -version "${{ steps.v.outputs.version }}" -out internal/server/changelog.json
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/inventory
@@ -57,7 +57,7 @@ jobs:
         env:
           KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: test -n "$KEY" || (echo "::error::secret RELEASE_SIGNING_KEY is missing" && exit 1)
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         env:
           # Passed via secret-envs: the "secrets" input splits multi-line values.
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -78,15 +78,15 @@ jobs:
     needs: image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # history and tags for scripts/addon-changelog.sh
       - name: version
         id: v
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -94,7 +94,7 @@ jobs:
       - name: image name
         id: img
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/inventory-ha-agent" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ha-addon/Dockerfile
@@ -110,7 +110,7 @@ jobs:
         env:
           TOKEN: ${{ secrets.ADDON_REPO_TOKEN }}
         run: test -n "$TOKEN" || (echo "::error::secret ADDON_REPO_TOKEN is missing" && exit 1)
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/inventory-ha-addon
           token: ${{ secrets.ADDON_REPO_TOKEN }}
