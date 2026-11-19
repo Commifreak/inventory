@@ -147,14 +147,22 @@ type finding struct {
 }
 
 // levelSpec describes a finding of a value that only grows and cannot be
-// fixed (SSD wear). Such alerts get no reminders; they are mailed again when
-// the value reaches the next step (base + n*step).
+// fixed (SSD wear, lifetime error counters). Such alerts get no reminders;
+// they are mailed again when the value reaches the next step
+// (base + n*step; step 1 = every increase).
 type levelSpec struct {
 	value, base, step float64
-	unit              string
+	prev              func(notified float64) string // message suffix naming the last notified value
 }
 
 func (l *levelSpec) mark(v float64) float64 { return math.Floor((v - l.base) / l.step) }
+
+// counterLevel notifies every increase of a lifetime counter.
+func counterLevel(cur int64) *levelSpec {
+	return &levelSpec{value: float64(cur), step: 1, prev: func(v float64) string {
+		return fmt.Sprintf(" %s at the last notification.", strconv.FormatFloat(v, 'f', -1, 64))
+	}}
+}
 
 // eventSpec describes the events behind a finding of an event rule. Such
 // alerts are not repeated as reminders – the events are in the past and the
@@ -298,7 +306,8 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 							}
 						}
 						ev.add(rc, id, subj, "%s.", msg)
-						ev.findings[len(ev.findings)-1].level = &levelSpec{value: float64(*dk.PercentUsed), base: p(rc, "percent"), step: 10, unit: "%"}
+						ev.findings[len(ev.findings)-1].level = &levelSpec{value: float64(*dk.PercentUsed), base: p(rc, "percent"), step: 10,
+							prev: func(v float64) string { return fmt.Sprintf(" Previously notified at %.0f%%.", v) }}
 					}
 				case "nvme_critical":
 					if dk.CriticalWarning != nil && *dk.CriticalWarning != 0 {
@@ -628,7 +637,7 @@ func (s *Server) evalCounter(ctx context.Context, ev *evaluation, rule func(stri
 			return
 		}
 		if m := msg(dk, rc, *cur, grew, fresh); m != "" {
-			found = append(found, finding{Rule: id, Subject: diskSubject(dk), Severity: rc.Severity, Message: m})
+			found = append(found, finding{Rule: id, Subject: diskSubject(dk), Severity: rc.Severity, Message: m, level: counterLevel(*cur)})
 		}
 	}
 	ev.ok(id)
@@ -662,11 +671,13 @@ func (s *Server) evalErrorCounters(ctx context.Context, ev *evaluation, rule fun
 			continue
 		}
 		var parts []string
+		var sum int64 // grows whenever one of the counters grows
 		for _, c := range counters {
 			cur := c.value(dk)
 			if cur == nil || *cur <= 0 {
 				continue
 			}
+			sum += *cur
 			grew, fresh, err := s.counterChange(ctx, d.ID, dk.Serial, since, *cur, c.pick)
 			if err != nil {
 				return // not evaluated: open alerts are kept
@@ -682,7 +693,8 @@ func (s *Server) evalErrorCounters(ctx context.Context, ev *evaluation, rule fun
 		}
 		if len(parts) > 0 {
 			found = append(found, finding{Rule: "smart_error_counters", Subject: diskSubject(dk), Severity: rc.Severity,
-				Message: fmt.Sprintf("%s: %s within the last %.0f days.", diskLabel(dk), strings.Join(parts, ", "), days)})
+				Message: fmt.Sprintf("%s: %s within the last %.0f days.", diskLabel(dk), strings.Join(parts, ", "), days),
+				level:   &levelSpec{value: float64(sum), step: 1, prev: func(float64) string { return " Grown since the last notification." }}})
 		}
 	}
 	ev.ok("smart_error_counters")
@@ -860,7 +872,7 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 					// Notified before values were recorded: start from now.
 					_ = s.store.SetAlertNotifiedValue(ctx, a.ID, f.level.value)
 				} else if f.level.mark(f.level.value) > f.level.mark(*a.NotifiedValue) {
-					a.Message += fmt.Sprintf(" Previously notified at %s%s.", strconv.FormatFloat(*a.NotifiedValue, 'f', -1, 64), f.level.unit)
+					a.Message += f.level.prev(*a.NotifiedValue)
 					ch.increased = append(ch.increased, a)
 				}
 			case f.event != nil:

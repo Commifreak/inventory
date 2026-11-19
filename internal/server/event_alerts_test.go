@@ -168,3 +168,57 @@ func TestWearAlertSteps(t *testing.T) {
 		t.Errorf("mail beyond rating: %d mails\n%s", len(m), m[len(m)-1].Text)
 	}
 }
+
+// Growing lifetime counters get no reminders, but a mail on every increase.
+func TestCounterAlertIncrease(t *testing.T) {
+	s, ts, fm := newTestServer(t)
+	ctx := context.Background()
+	_ = s.store.PutSetting(ctx, setSMTP, SMTPSettings{Host: "localhost", From: "inv@example.com", Port: 25})
+	as := s.alertSettings(ctx)
+	as.Recipients = []string{"admin@example.com"}
+	as.RenotifyHours = 24
+	_ = s.store.PutSetting(ctx, setAlerts, as)
+	toks, _ := s.store.ListTokens(ctx)
+	er := enroll(t, ts, toks[0].Token, protocol.Identity{Hostname: "NUC", OS: "windows", Arch: "amd64", HardwareID: "HW"})
+	report := func(crc int64, at time.Time) {
+		t.Helper()
+		rep := protocol.Report{AgentVersion: "0.0.9", Sections: map[string]protocol.Section{protocol.CollectSMART: {CollectedAt: at, Data: protocol.SmartData{Disks: []protocol.Disk{
+			{Device: "Disk 0", Model: "SAMSUNG MZNTY128", Serial: "S2Y", Protocol: "ATA", System: true, HealthPassed: ptr(true), CRCErrors: ptr(crc)}}}}}}
+		if code := postJSON(t, ts.URL+protocol.APIPrefix+"/report", er.Credential, rep, nil); code != 200 {
+			t.Fatalf("report: %d", code)
+		}
+		s.runAlerts(ctx, nil)
+	}
+	crc := func() []Mail {
+		var out []Mail
+		for _, m := range fm.mails {
+			if strings.Contains(m.Subject, "CRC") {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+
+	report(328, time.Now().AddDate(0, 0, -2))
+	report(331, time.Now())
+	if n := len(crc()); n != 1 {
+		t.Fatalf("mails after the first increase: %d", n)
+	}
+	// Reminder interval passed, no new errors: no mail.
+	_, _ = s.store.DB.ExecContext(ctx, `UPDATE alerts SET last_notified_at=?`, time.Now().Add(-30*time.Hour).Unix())
+	report(331, time.Now())
+	if n := len(crc()); n != 1 {
+		t.Fatalf("counter alert repeated as reminder: %d mails", n)
+	}
+	// More errors: mail with the previous count.
+	report(335, time.Now())
+	m := crc()
+	if len(m) != 2 || !strings.Contains(m[1].Text, "Alert increased") || !strings.Contains(m[1].Text, "7 new interface CRC error(s)") ||
+		!strings.Contains(m[1].Text, "331 at the last notification.") {
+		t.Fatalf("increase mail: %d mails\n%s", len(m), m[len(m)-1].Text)
+	}
+	report(335, time.Now())
+	if n := len(crc()); n != 2 {
+		t.Errorf("mail without a further increase: %d mails", n)
+	}
+}
