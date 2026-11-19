@@ -45,4 +45,7 @@ Image: `docker buildx build -t inventory:dev .` (add
   following one, so agents update correctly when a server switches between
   `:edge` and `:latest`.
 - A tag `vX.Y.Z` builds `:X.Y.Z`, `:X.Y` and `:latest`. Nothing has to be changed afterwards.
+- Changes are merged as squash-merged pull requests; the PR titles form the GitHub release
+  notes ("Generate release notes") and, for changes to the agent or the add-on image, the
+  Home Assistant add-on changelog (`scripts/addon-changelog.sh`).
 - The workflow fails if the secret `RELEASE_SIGNING_KEY` is missing.
