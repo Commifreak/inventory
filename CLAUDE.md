@@ -35,6 +35,9 @@ DATA_DIR=./data AGENTS_DIR=./dist/agents INITIAL_ADMIN_PASSWORD=dev-password-123
 `.github/workflows/vulncheck.yml` runs `govulncheck` for linux/windows/darwin on every change
 and weekly; its Go version must match `GO_VERSION` in the Dockerfiles. A finding fails the run:
 update the module (or Go) in a PR, then ask the maintainer for a patch release.
+Dependabot (`.github/dependabot.yml`) opens one grouped PR per week for Go modules and one for
+GitHub Actions. Merge them like any PR once CI is green, but give Go module updates a
+user-facing squash title ("Update Go dependencies") – it becomes the changelog line.
 
 Windows code cannot run here (Linux container): compile/vet it with `GOOS=windows`; the CI
 job on `windows-latest` (a Hyper-V VM) runs the real collectors (`inventory-agent collect`,
