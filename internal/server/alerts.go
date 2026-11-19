@@ -58,7 +58,7 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "errors", 0}}},
 	{ID: "smart_temperature", Group: "Disks", Title: "Disk temperature", Description: "Drive temperature at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"celsius", "Threshold", "°C", 65}}},
-	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "NVMe 'percentage used' or eMMC life time estimate at or above the threshold.",
+	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "Used endurance of an SSD (NVMe 'percentage used', SATA/SAS endurance indicator or wear attributes) or eMMC life time estimate at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"percent", "Threshold", "%", 90}}},
 	{ID: "nvme_critical", Group: "Disks", Title: "NVMe critical warning", Description: "NVMe critical warning flags set or available spare below threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true},
