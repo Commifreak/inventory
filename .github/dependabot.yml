@@ -1,0 +1,21 @@
+# Weekly dependency updates, one grouped pull request per ecosystem.
+# Docker base images use moving tags (golang:1.26-bookworm, debian:bookworm-slim,
+# distroless) and pick up fixes with every build, so they are not listed here.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go-modules:
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ['*']
