@@ -19,10 +19,12 @@ FROM base AS agents
 RUN apt-get update && apt-get install -y --no-install-recommends p7zip-full && rm -rf /var/lib/apt/lists/*
 ARG VERSION
 ARG EXTRA_TRUSTED_KEY
+# Set by CI: fail instead of producing unsigned agents when the key is missing.
+ARG REQUIRE_SIGNATURE
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=secret,id=release_signing_key,required=false \
     VERSION="${VERSION:-0.0.0-dev}" RELEASE_SIGNING_KEY_FILE=/run/secrets/release_signing_key \
-    EXTRA_TRUSTED_KEY="${EXTRA_TRUSTED_KEY}" ./scripts/build-agents.sh \
+    EXTRA_TRUSTED_KEY="${EXTRA_TRUSTED_KEY}" REQUIRE_SIGNATURE="${REQUIRE_SIGNATURE}" ./scripts/build-agents.sh \
  && mkdir -p /out && cp -r dist/agents /out/agents
 
 FROM base AS server
