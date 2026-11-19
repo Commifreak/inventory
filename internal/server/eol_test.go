@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/commifreak/inventory/internal/protocol"
 )
 
 // testEOLCycles is a small excerpt of endoflife.date data for tests.
@@ -76,5 +78,28 @@ func TestEOLFetchWarning(t *testing.T) {
 	e.fetch = false
 	if e.Warning(now.Add(30*24*time.Hour)) != "" {
 		t.Fatalf("warning with EOL_FETCH=false")
+	}
+}
+
+func TestEOLKeyWindowsLTSC(t *testing.T) {
+	cases := []struct {
+		os   protocol.OSInfo
+		want string
+	}{
+		{protocol.OSInfo{Family: "windows", Name: "Windows 11 IoT Enterprise LTSC 2024", DisplayVersion: "24H2", Edition: "IoTEnterpriseS", Build: "26100.9974"}, "11-24h2-iot-lts,11-24h2-e-lts"},
+		{protocol.OSInfo{Family: "windows", Name: "Windows 11 Enterprise LTSC 2024", DisplayVersion: "24H2", Edition: "EnterpriseS"}, "11-24h2-e-lts"},
+		{protocol.OSInfo{Family: "windows", Name: "Windows 10 Enterprise LTSC 2019", Edition: "EnterpriseS", Build: "17763.6532"}, "10-1809-e-lts"},
+		{protocol.OSInfo{Family: "windows", Name: "Windows 11 Pro", DisplayVersion: "24H2", Edition: "Professional"}, "11-24h2-w,11-24h2"},
+		{protocol.OSInfo{Family: "windows", Name: "Windows Server 2022 Standard", DisplayVersion: "21H2"}, ""},
+	}
+	for _, c := range cases {
+		_, cands, _ := eolKey(c.os)
+		if got := strings.Join(cands, ","); got != c.want {
+			t.Errorf("%s: %q, want %q", c.os.Name, got, c.want)
+		}
+	}
+	e := &EOLData{prods: map[string][]eolCycle{"windows": {{Cycle: "11-24h2-iot-lts", EOL: json.RawMessage(`"2034-10-10"`)}}}}
+	if info, ok := e.Lookup(cases[0].os); !ok || info.IsEOL || info.EOL.Format("2006-01-02") != "2034-10-10" {
+		t.Errorf("IoT LTSC lookup: %+v %v", info, ok)
 	}
 }
