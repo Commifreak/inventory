@@ -56,6 +56,8 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "sectors", 0}}},
 	{ID: "smart_uncorrectable", Group: "Disks", Title: "Uncorrectable errors", Description: "Offline uncorrectable sectors (ATA) or media errors (NVMe).",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "errors", 0}}},
+	{ID: "smart_crc", Group: "Disks", Title: "Interface CRC errors increasing", Description: "The interface CRC error count (ATA attribute 199) grew within the given time – usually a bad cable, connector or slot rather than the disk itself. Errors counted before do not alert.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}}},
 	{ID: "smart_temperature", Group: "Disks", Title: "Disk temperature", Description: "Drive temperature at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"celsius", "Threshold", "°C", 65}}},
 	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "Used endurance of an SSD (NVMe 'percentage used', SATA/SAS endurance indicator or wear attributes) or eMMC life time estimate at or above the threshold.",
@@ -258,6 +260,40 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 						ev.add(rc, id, subj, "%s: available spare %d%% at or below threshold %d%%.", name, *dk.AvailableSpare, *dk.SpareThreshold)
 					}
 				}
+			}
+		}
+	}
+
+	// CRC errors are a lifetime counter: alert only when it grows, compared
+	// with the SMART history (one value per disk and day).
+	if smart, ok := decodeSnap[protocol.SmartData](snaps, protocol.CollectSMART); ok {
+		if rc, on := rule("smart_crc"); on {
+			since := now.Add(-time.Duration(p(rc, "days") * 24 * float64(time.Hour)))
+			evaluated := true
+			var found []finding
+			for _, dk := range smart.Disks {
+				if dk.CRCErrors == nil || dk.Serial == "" || (rc.SystemDiskOnly && !dk.System) || (dk.External && !rc.SystemDiskOnly) {
+					continue
+				}
+				hist, err := s.store.SmartHistory(ctx, d.ID, dk.Serial, since)
+				if err != nil {
+					evaluated = false // open alerts must not be resolved
+					break
+				}
+				low := *dk.CRCErrors
+				for _, h := range hist {
+					if h.CRCErrors != nil && *h.CRCErrors < low {
+						low = *h.CRCErrors
+					}
+				}
+				if grew := *dk.CRCErrors - low; grew > 0 {
+					found = append(found, finding{Rule: "smart_crc", Subject: diskSubject(dk), Severity: rc.Severity,
+						Message: fmt.Sprintf("%s: %d new interface CRC error(s) in the last %.0f days (%d in total). Check the cable/connector.", diskLabel(dk), grew, p(rc, "days"), *dk.CRCErrors)})
+				}
+			}
+			if evaluated {
+				ev.ok("smart_crc")
+				ev.findings = append(ev.findings, found...)
 			}
 		}
 	}

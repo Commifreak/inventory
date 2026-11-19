@@ -133,7 +133,7 @@ time series, CPU temperatures.
 Built-in rule catalog, each rule with enable flag, severity (warning/critical),
 parameters, optional "system disk only" and optional recipient override:
 device offline (default 7 days, per-device override), agent update failed,
-SMART failed / reallocated / pending / uncorrectable / temperature / SSD wear (NVMe, SATA/SAS) /
+SMART failed / reallocated / pending / uncorrectable / interface CRC errors increasing (compared with the SMART history) / temperature / SSD wear (NVMe, SATA/SAS) /
 NVMe critical, low disk space, update failed, updates pending too long, update
 check failing, reboot pending too long, OS end of support (endoflife.date incl. Windows LTSC/IoT LTSC cycles, fetched daily and
 cached in DATA_DIR/eol, no built-in table), Office/Visio/Project (perpetual releases) end of support
