@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -14,23 +16,23 @@ import (
 	"time"
 )
 
-// Mailer sends plain text mails.
+// Mailer sends notification mails (plain text plus optional HTML).
 type Mailer interface {
-	Send(ctx context.Context, to []string, subject, body string) error
+	Send(ctx context.Context, to []string, m Mail) error
 }
 
 type smtpMailer struct{ s *Server }
 
-func (m *smtpMailer) Send(ctx context.Context, to []string, subject, body string) error {
+func (m *smtpMailer) Send(ctx context.Context, to []string, msg Mail) error {
 	cfg := m.s.smtpSettings(ctx)
 	pw, err := m.s.secrets.Decrypt(cfg.PasswordEnc)
 	if err != nil {
 		return err
 	}
-	return sendMail(ctx, cfg, pw, to, subject, body)
+	return sendMail(ctx, cfg, pw, to, msg)
 }
 
-func sendMail(ctx context.Context, cfg SMTPSettings, password string, to []string, subject, body string) error {
+func sendMail(ctx context.Context, cfg SMTPSettings, password string, to []string, msg Mail) error {
 	if !cfg.Configured() {
 		return errors.New("SMTP is not configured")
 	}
@@ -112,7 +114,7 @@ func sendMail(ctx context.Context, cfg SMTPSettings, password string, to []strin
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write(buildMessage(from, rcpts, subject, body)); err != nil {
+	if _, err := w.Write(buildMessage(from, rcpts, msg)); err != nil {
 		return err
 	}
 	if err := w.Close(); err != nil {
@@ -125,20 +127,41 @@ func helloName() string {
 	return "inventory.localhost"
 }
 
-func buildMessage(from *mail.Address, to []string, subject, body string) []byte {
+// buildMessage builds the mail: plain text only, or multipart/alternative
+// with the HTML version. Bodies are quoted-printable (HTML lines can exceed
+// the SMTP line length limit).
+func buildMessage(from *mail.Address, to []string, msg Mail) []byte {
 	var b strings.Builder
 	hdr := func(k, v string) { b.WriteString(k + ": " + v + "\r\n") }
 	hdr("From", from.String())
 	hdr("To", strings.Join(to, ", "))
-	hdr("Subject", mime.QEncoding.Encode("utf-8", subject))
+	hdr("Subject", mime.QEncoding.Encode("utf-8", msg.Subject))
 	hdr("Date", time.Now().Format(time.RFC1123Z))
 	hdr("Message-ID", "<"+randomToken(16)+"@inventory>")
 	hdr("MIME-Version", "1.0")
-	hdr("Content-Type", "text/plain; charset=utf-8")
-	hdr("Content-Transfer-Encoding", "8bit")
 	hdr("Auto-Submitted", "auto-generated")
+	part := func(contentType, body string) {
+		b.WriteString("Content-Type: " + contentType + "; charset=utf-8\r\n")
+		b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+		var qp bytes.Buffer
+		w := quotedprintable.NewWriter(&qp)
+		_, _ = w.Write([]byte(strings.ReplaceAll(body, "\r\n", "\n")))
+		_ = w.Close()
+		b.Write(qp.Bytes())
+		b.WriteString("\r\n")
+	}
+	if msg.HTML == "" {
+		part("text/plain", msg.Text)
+		return []byte(b.String())
+	}
+	boundary := "inv-" + randomToken(12)
+	hdr("Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
 	b.WriteString("\r\n")
+	b.WriteString("--" + boundary + "\r\n")
+	part("text/plain", msg.Text)
+	b.WriteString("--" + boundary + "\r\n")
+	part("text/html", msg.HTML)
+	b.WriteString("--" + boundary + "--\r\n")
 	// The SMTP data writer converts line endings and dot-stuffs lines.
-	b.WriteString(strings.ReplaceAll(body, "\r\n", "\n"))
 	return []byte(b.String())
 }

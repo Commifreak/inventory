@@ -25,13 +25,15 @@ import (
 )
 
 type fakeMailer struct {
-	sent []string
-	to   [][]string
+	sent  []string
+	to    [][]string
+	mails []Mail
 }
 
-func (m *fakeMailer) Send(_ context.Context, to []string, subject, body string) error {
-	m.sent = append(m.sent, subject)
+func (m *fakeMailer) Send(_ context.Context, to []string, msg Mail) error {
+	m.sent = append(m.sent, msg.Subject)
 	m.to = append(m.to, to)
+	m.mails = append(m.mails, msg)
 	return nil
 }
 

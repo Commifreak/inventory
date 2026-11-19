@@ -153,7 +153,7 @@ as events. Every rule can be disabled per device (Alerts tab), e.g. for a
 firewall that is off on purpose.
 
 Notifications: one mail per device and evaluation with new/still open/resolved
-alerts, reminders every N hours (default 24), optional resolve mails, per-device mute.
+alerts (HTML with a plain text alternative, inline styles, light and dark colours), reminders every N hours (default 24), optional resolve mails, per-device mute.
 
 ## Areas
 

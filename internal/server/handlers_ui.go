@@ -939,8 +939,11 @@ func (w *webUI) handleSMTPTest(rw http.ResponseWriter, r *http.Request) {
 	}
 	pw, err := w.s.secrets.Decrypt(c.PasswordEnc)
 	if err == nil {
-		err = sendMail(r.Context(), c, pw, to, "["+w.s.generalSettings(r.Context()).InstanceName+"] Test mail",
-			"This is a test mail from your Inventory server.\n\nIf you can read this, alert mails will be delivered.\n")
+		inst := w.s.generalSettings(r.Context()).InstanceName
+		err = sendMail(r.Context(), c, pw, to, Mail{Subject: "[" + inst + "] Test mail",
+			Text: "This is a test mail from your Inventory server.\n\nIf you can read this, alert mails will be delivered.\n",
+			HTML: renderMailHTML(mailData{Instance: inst, Heading: "Test mail", Severity: "resolved",
+				Device: "If you can read this, alert mails will be delivered.", URL: w.s.cfg.BaseURL})})
 	}
 	if err != nil {
 		redirectError(rw, r, "/settings/smtp", "Sending failed: "+err.Error())

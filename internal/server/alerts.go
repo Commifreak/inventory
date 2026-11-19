@@ -695,8 +695,7 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 		if len(b.opened)+len(b.resolved)+len(b.renotify) == 0 {
 			continue
 		}
-		subject, body := s.alertMail(ctx, d, b.opened, b.resolved, b.renotify)
-		if err := s.mailer.Send(ctx, b.to, subject, body); err != nil {
+		if err := s.mailer.Send(ctx, b.to, s.alertMail(ctx, d, b.opened, b.resolved, b.renotify)); err != nil {
 			s.log.Warn("sending alert mail failed", "device", d.ID, "err", err)
 			continue
 		}
@@ -724,61 +723,104 @@ func mergeRecipients(lists ...[]string) []string {
 	return out
 }
 
-func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolved, renotify []store.Alert) (string, string) {
+func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolved, renotify []store.Alert) Mail {
 	g := s.generalSettings(ctx)
-	sev := ""
+	title := func(a store.Alert) string {
+		if def := ruleDef(a.Rule); def != nil {
+			return def.Title
+		}
+		return a.Rule
+	}
+	sev := SevWarning
 	for _, a := range append(opened, renotify...) {
 		if a.Severity == SevCritical {
-			sev = "CRITICAL"
-			break
+			sev = SevCritical
 		}
-		sev = "WARNING"
 	}
-	var subj string
+	active := append(append([]store.Alert{}, opened...), renotify...)
+	var subj, heading string
 	switch {
-	case len(opened)+len(renotify) > 0:
-		first := append(opened, renotify...)[0]
-		title := first.Rule
-		if def := ruleDef(first.Rule); def != nil {
-			title = def.Title
-		}
-		subj = fmt.Sprintf("[%s] %s: %s: %s", g.InstanceName, sev, d.Name(), title)
-		if n := len(opened) + len(renotify); n > 1 {
+	case len(active) > 0:
+		subj = fmt.Sprintf("[%s] %s: %s: %s", g.InstanceName, strings.ToUpper(sev), d.Name(), title(active[0]))
+		if n := len(active); n > 1 {
 			subj += fmt.Sprintf(" (+%d more)", n-1)
 		}
+		switch {
+		case len(opened) == 1 && len(renotify) == 0:
+			heading = "New alert"
+		case len(opened) > 0:
+			heading = fmt.Sprintf("%d new alerts", len(opened))
+		default:
+			heading = fmt.Sprintf("%d alert(s) still open", len(renotify))
+		}
+		if len(resolved) > 0 {
+			heading += fmt.Sprintf(", %d resolved", len(resolved))
+		}
 	default:
-		subj = fmt.Sprintf("[%s] RESOLVED: %s (%d alert(s))", g.InstanceName, d.Name(), len(resolved))
+		sev = "resolved"
+		subj = fmt.Sprintf("[%s] RESOLVED: %s: %s", g.InstanceName, d.Name(), title(resolved[0]))
+		if n := len(resolved); n > 1 {
+			subj += fmt.Sprintf(" (+%d more)", n-1)
+		}
+		if len(resolved) > 1 {
+			heading = fmt.Sprintf("%d alerts resolved", len(resolved))
+		} else {
+			heading = "Alert resolved"
+		}
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "Device: %s\n", d.Name())
+
+	md := mailData{Instance: g.InstanceName, Heading: heading, Severity: sev, Device: d.Name()}
+	if d.Name() != d.Hostname {
+		md.Rows = append(md.Rows, [2]string{"Host name", d.Hostname})
+	}
 	if d.OSName != "" {
-		fmt.Fprintf(&b, "OS:     %s\n", d.OSName)
+		md.Rows = append(md.Rows, [2]string{"OS", d.OSName})
+	}
+	if areas, _ := s.store.ListAreas(ctx); len(areas) > 1 {
+		for _, a := range areas {
+			if a.ID == d.AreaID {
+				md.Rows = append(md.Rows, [2]string{"Area", a.Name})
+			}
+		}
 	}
 	if !d.LastSeenAt.IsZero() {
-		fmt.Fprintf(&b, "Seen:   %s\n", d.LastSeenAt.Format("2006-01-02 15:04 MST"))
+		md.Rows = append(md.Rows, [2]string{"Last seen", d.LastSeenAt.Format("2006-01-02 15:04 MST")})
+	}
+	if base := s.cfg.BaseURL; base != "" {
+		md.URL = base + "/devices/" + d.ID
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s – %s\n\n", heading, d.Name())
+	for _, r := range md.Rows {
+		fmt.Fprintf(&b, "%-10s %s\n", r[0]+":", r[1])
 	}
 	b.WriteString("\n")
-	section := func(title string, list []store.Alert) {
+	section := func(name string, list []store.Alert, resolvedList bool) {
 		if len(list) == 0 {
 			return
 		}
-		fmt.Fprintf(&b, "%s\n%s\n", title, strings.Repeat("-", len(title)))
+		ms := mailSection{Title: name}
+		fmt.Fprintf(&b, "%s\n%s\n", name, strings.Repeat("-", len(name)))
 		for _, a := range list {
-			name := a.Rule
-			if def := ruleDef(a.Rule); def != nil {
-				name = def.Title
+			ma := mailAlert{Title: title(a), Message: a.Message, Severity: a.Severity, Since: "since " + a.OpenedAt.Format("2006-01-02 15:04")}
+			if resolvedList {
+				ma.Severity = "resolved"
+				ma.Since = "open since " + a.OpenedAt.Format("2006-01-02 15:04")
 			}
-			fmt.Fprintf(&b, "* [%s] %s\n  %s\n  since %s\n", strings.ToUpper(a.Severity), name, a.Message, a.OpenedAt.Format("2006-01-02 15:04"))
+			ms.Alerts = append(ms.Alerts, ma)
+			fmt.Fprintf(&b, "* [%s] %s\n  %s\n  %s\n", strings.ToUpper(ma.Severity), ma.Title, ma.Message, ma.Since)
 		}
 		b.WriteString("\n")
+		md.Sections = append(md.Sections, ms)
 	}
-	section("New alerts", opened)
-	section("Still open", renotify)
-	section("Resolved", resolved)
-	if base := s.cfg.BaseURL; base != "" {
-		fmt.Fprintf(&b, "Details: %s/devices/%s\n", base, d.ID)
+	section("New alerts", opened, false)
+	section("Still open", renotify, false)
+	section("Resolved", resolved, true)
+	if md.URL != "" {
+		fmt.Fprintf(&b, "Details: %s\n", md.URL)
 	}
-	return subj, b.String()
+	return Mail{Subject: subj, Text: b.String(), HTML: renderMailHTML(md)}
 }
 
 func humanDuration(d time.Duration) string {
