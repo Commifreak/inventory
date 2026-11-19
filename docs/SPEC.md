@@ -201,6 +201,14 @@ alerts (HTML with a plain text alternative, inline styles, light and dark colour
   Signing out or the session expiring ends it; it also ends when the superadmin
   loses the superadmin rights or is disabled.
 
+## What's new
+
+The image build bundles a changelog: the titles of the squash-merged pull requests per
+release (for edge builds: since the last release) that change more than documentation,
+tests, CI or scripts. After an update every user sees the new entries once as a notice
+("What's new", dismissed with "Got it"); new users start with everything seen, users who
+never dismissed see the changes of the current release. `/changelog` lists all entries.
+
 ## Server security
 
 - Local users with bcrypt passwords, forced change of the initial

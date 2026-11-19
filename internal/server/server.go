@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/commifreak/inventory/internal/protocol"
+	"github.com/commifreak/inventory/internal/release"
 	"github.com/commifreak/inventory/internal/server/store"
 )
 
@@ -30,6 +31,8 @@ type Server struct {
 	eol     *EOLData
 	oidc    *oidcProvider
 	mailer  Mailer
+
+	changelog release.Changelog // bundled at build time
 
 	limiter *rateLimiter
 
@@ -63,6 +66,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		limiter:   newRateLimiter(),
 		alertKick: make(chan string, 256),
 		eol:       newEOLData(cfg.DataDir, cfg.EOLFetch, log),
+		changelog: loadChangelog(),
 	}
 	s.mailer = &smtpMailer{s: s}
 	s.web, err = newWebUI(s)

@@ -24,3 +24,10 @@
 
 {{define "sectionmeta"}}{{if .}}<p class="meta">Collected {{ago .CollectedAt}} ({{fmtTime .CollectedAt}}){{if .Error}} · <span class="err-text">Error: {{.Error}}</span>{{end}}{{range .Warnings}}<br><span class="warn-text">⚠ {{.}}</span>{{end}}</p>{{else}}<p class="meta">Not collected yet.</p>{{end}}{{end}}
 
+
+{{define "changecount"}}{{$n := 0}}{{range .}}{{$n = add $n (len .Entries)}}{{end}}{{$n}} change{{if ne $n 1}}s{{end}}{{end}}
+
+{{define "changelist"}}{{range .}}
+<h3 class="changever">{{.Version}} <span class="sub">{{fmtDate .Date}}</span></h3>
+<ul class="changes">{{range .Entries}}{{$e := .}}<li>{{.Title}}{{with prURL $e.PR}} <a class="sub" href="{{.}}" target="_blank" rel="noopener">#{{$e.PR}}</a>{{end}}</li>{{end}}</ul>
+{{end}}{{end}}
