@@ -58,6 +58,8 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "errors", 0}}},
 	{ID: "nvme_media_errors", Group: "Disks", Title: "NVMe media errors", Description: "Unrecovered data integrity errors of an NVMe drive, grown within the given time – or the drive was first reported with them. A count that stays the same does not alert again.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"days", "New within", "days", 7}}},
+	{ID: "smart_error_counters", Group: "Disks", Title: "Disk error counters increasing", Description: "Early signs of a failing disk: reported uncorrectable errors (187), command timeouts (188) or spin retries (10) grew within the given time. Uncorrectable errors and spin retries also alert once when the disk is first reported with them.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}}},
 	{ID: "smart_crc", Group: "Disks", Title: "Interface CRC errors increasing", Description: "The interface CRC error count (ATA attribute 199) grew within the given time – usually a bad cable, connector or slot rather than the disk itself. Errors counted before do not alert.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}}},
 	{ID: "power_loss", Group: "Disks", Title: "Unexpected power losses increasing", Description: "The disk counted unexpected power losses (NVMe unsafe shutdowns, ATA 174/192) within the given time – power cuts, a failing power supply or a device switched off hard. Earlier counts do not alert.",
@@ -303,6 +305,7 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 				}
 				return fmt.Sprintf("%s: %d new interface CRC error(s) in the last %.0f days (%d in total). Check the cable/connector.", diskLabel(dk), grew, p(rc, "days"), cur)
 			})
+		s.evalErrorCounters(ctx, ev, rule, d, smart.Disks, now)
 		s.evalCounter(ctx, ev, rule, d, smart.Disks, now, "power_loss",
 			func(dk protocol.Disk) *int64 { return dk.UnsafeShutdowns },
 			func(h store.SmartPoint) *int64 { return h.UnsafeShutdowns },
@@ -574,6 +577,60 @@ func (s *Server) evalCounter(ctx context.Context, ev *evaluation, rule func(stri
 		}
 	}
 	ev.ok(id)
+	ev.findings = append(ev.findings, found...)
+}
+
+// evalErrorCounters evaluates "smart_error_counters": one finding per disk
+// listing the counters that grew. Command timeouts only count when they grow
+// (many healthy Seagate disks report packed non-zero values).
+func (s *Server) evalErrorCounters(ctx context.Context, ev *evaluation, rule func(string) (RuleConfig, bool), d *store.Device, disks []protocol.Disk, now time.Time) {
+	rc, on := rule("smart_error_counters")
+	if !on {
+		return
+	}
+	days := rc.Params["days"]
+	since := now.Add(-time.Duration(days * 24 * float64(time.Hour)))
+	counters := []struct {
+		label     string
+		value     func(protocol.Disk) *int64
+		pick      func(store.SmartPoint) *int64
+		firstSeen bool // alert once for a disk first reported with a non-zero count
+		showCount bool
+	}{
+		{"reported uncorrectable errors", func(dk protocol.Disk) *int64 { return dk.ReportedUncorrect }, func(h store.SmartPoint) *int64 { return h.ReportedUncorrect }, true, true},
+		{"spin retries", func(dk protocol.Disk) *int64 { return dk.SpinRetry }, func(h store.SmartPoint) *int64 { return h.SpinRetry }, true, true},
+		{"command timeouts", func(dk protocol.Disk) *int64 { return dk.CommandTimeout }, func(h store.SmartPoint) *int64 { return h.CommandTimeout }, false, false},
+	}
+	var found []finding
+	for _, dk := range disks {
+		if dk.Serial == "" || (rc.SystemDiskOnly && !dk.System) || (dk.External && !rc.SystemDiskOnly) {
+			continue
+		}
+		var parts []string
+		for _, c := range counters {
+			cur := c.value(dk)
+			if cur == nil || *cur <= 0 {
+				continue
+			}
+			grew, fresh, err := s.counterChange(ctx, d.ID, dk.Serial, since, *cur, c.pick)
+			if err != nil {
+				return // not evaluated: open alerts are kept
+			}
+			switch {
+			case grew > 0 && c.showCount:
+				parts = append(parts, fmt.Sprintf("%d new %s (%d in total)", grew, c.label, *cur))
+			case grew > 0:
+				parts = append(parts, c.label+" increased")
+			case fresh && c.firstSeen:
+				parts = append(parts, fmt.Sprintf("%d %s", *cur, c.label))
+			}
+		}
+		if len(parts) > 0 {
+			found = append(found, finding{Rule: "smart_error_counters", Subject: diskSubject(dk), Severity: rc.Severity,
+				Message: fmt.Sprintf("%s: %s within the last %.0f days.", diskLabel(dk), strings.Join(parts, ", "), days)})
+		}
+	}
+	ev.ok("smart_error_counters")
 	ev.findings = append(ev.findings, found...)
 }
 
