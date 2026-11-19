@@ -73,3 +73,45 @@ func TestPowerLossIncreasing(t *testing.T) {
 		t.Fatalf("no power loss alert: %q", m)
 	}
 }
+
+func TestReallocatedNewOrFirst(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	ctx := context.Background()
+	toks, _ := s.store.ListTokens(ctx)
+	er := enroll(t, ts, toks[0].Token, protocol.Identity{Hostname: "PC", OS: "windows", Arch: "amd64", HardwareID: "HW"})
+	report := func(realloc, media int64, at time.Time) {
+		rep := protocol.Report{AgentVersion: "0.0.9", Sections: map[string]protocol.Section{protocol.CollectSMART: {CollectedAt: at, Data: protocol.SmartData{Disks: []protocol.Disk{
+			{Device: "/dev/sda", Serial: "HDD1", Protocol: "ATA", System: true, HealthPassed: ptr(true), Reallocated: ptr(realloc)},
+			{Device: "/dev/nvme0", Serial: "NV1", Protocol: "NVMe", HealthPassed: ptr(true), MediaErrors: ptr(media)}}}}}}
+		postJSON(t, ts.URL+protocol.APIPrefix+"/report", er.Credential, rep, nil)
+		s.runAlerts(ctx, nil)
+	}
+	open := func(rule string) string {
+		alerts, _ := s.store.OpenAlertsForDevice(ctx, er.DeviceID)
+		for _, a := range alerts {
+			if a.Rule == rule {
+				return a.Message
+			}
+		}
+		return ""
+	}
+	// First report with old damage: alert (disk first reported).
+	report(3, 2, time.Now())
+	if !strings.Contains(open("smart_reallocated"), "first reported") || !strings.Contains(open("nvme_media_errors"), "first reported") {
+		t.Fatalf("no alert for a disk first reported with damage: %q / %q", open("smart_reallocated"), open("nvme_media_errors"))
+	}
+	// Ten days later, unchanged: resolved.
+	old := time.Now().AddDate(0, 0, -10)
+	if _, err := s.store.DB.Exec(`UPDATE smart_history SET ts=?, day=?`, old.Unix(), old.Format("2006-01-02")); err != nil {
+		t.Fatal(err)
+	}
+	report(3, 2, time.Now())
+	if m := open("smart_reallocated") + open("nvme_media_errors"); m != "" {
+		t.Fatalf("alert for an unchanged count: %s", m)
+	}
+	// Grown: alert again.
+	report(5, 3, time.Now().Add(time.Minute))
+	if !strings.Contains(open("smart_reallocated"), "2 new") || !strings.Contains(open("nvme_media_errors"), "1 new") {
+		t.Fatalf("no alert for grown counts: %q / %q", open("smart_reallocated"), open("nvme_media_errors"))
+	}
+}

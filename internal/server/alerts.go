@@ -50,12 +50,14 @@ var RuleCatalog = []RuleDef{
 
 	{ID: "smart_failed", Group: "Disks", Title: "SMART health check failed", Description: "The drive reports that it is failing.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true},
-	{ID: "smart_reallocated", Group: "Disks", Title: "Reallocated sectors", Description: "Reallocated sector count above the threshold (ATA).",
-		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "sectors", 0}}},
+	{ID: "smart_reallocated", Group: "Disks", Title: "Reallocated sectors", Description: "Reallocated sector count above the threshold (ATA) and grown within the given time – or the disk was first reported with it. A count that stays the same does not alert again.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "sectors", 0}, {"days", "New within", "days", 7}}},
 	{ID: "smart_pending", Group: "Disks", Title: "Pending sectors", Description: "Sectors waiting to be remapped (ATA).",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "sectors", 0}}},
-	{ID: "smart_uncorrectable", Group: "Disks", Title: "Uncorrectable errors", Description: "Offline uncorrectable sectors (ATA) or media errors (NVMe).",
+	{ID: "smart_uncorrectable", Group: "Disks", Title: "Uncorrectable errors", Description: "Offline uncorrectable sectors (ATA).",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "errors", 0}}},
+	{ID: "nvme_media_errors", Group: "Disks", Title: "NVMe media errors", Description: "Unrecovered data integrity errors of an NVMe drive, grown within the given time – or the drive was first reported with them. A count that stays the same does not alert again.",
+		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"days", "New within", "days", 7}}},
 	{ID: "smart_crc", Group: "Disks", Title: "Interface CRC errors increasing", Description: "The interface CRC error count (ATA attribute 199) grew within the given time – usually a bad cable, connector or slot rather than the disk itself. Errors counted before do not alert.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}}},
 	{ID: "power_loss", Group: "Disks", Title: "Unexpected power losses increasing", Description: "The disk counted unexpected power losses (NVMe unsafe shutdowns, ATA 174/192) within the given time – power cuts, a failing power supply or a device switched off hard. Earlier counts do not alert.",
@@ -208,7 +210,7 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 
 	// --- disks ---
 	if smart, ok := decodeSnap[protocol.SmartData](snaps, protocol.CollectSMART); ok {
-		for _, id := range []string{"smart_failed", "smart_reallocated", "smart_pending", "smart_uncorrectable", "smart_temperature", "nvme_wear", "nvme_critical"} {
+		for _, id := range []string{"smart_failed", "smart_pending", "smart_uncorrectable", "smart_temperature", "nvme_wear", "nvme_critical"} {
 			rc, on := rule(id)
 			if !on {
 				continue
@@ -228,24 +230,13 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 					if dk.HealthPassed != nil && !*dk.HealthPassed {
 						ev.add(rc, id, subj, "%s: SMART overall health self-assessment FAILED.", name)
 					}
-				case "smart_reallocated":
-					if dk.Reallocated != nil && float64(*dk.Reallocated) > p(rc, "max") {
-						ev.add(rc, id, subj, "%s: %d reallocated sectors.", name, *dk.Reallocated)
-					}
 				case "smart_pending":
 					if dk.Pending != nil && float64(*dk.Pending) > p(rc, "max") {
 						ev.add(rc, id, subj, "%s: %d pending sectors.", name, *dk.Pending)
 					}
 				case "smart_uncorrectable":
-					var n int64
-					if dk.Uncorrectable != nil {
-						n += *dk.Uncorrectable
-					}
-					if dk.MediaErrors != nil {
-						n += *dk.MediaErrors
-					}
-					if n > 0 && float64(n) > p(rc, "max") {
-						ev.add(rc, id, subj, "%s: %d uncorrectable/media errors.", name, n)
+					if dk.Uncorrectable != nil && *dk.Uncorrectable > 0 && float64(*dk.Uncorrectable) > p(rc, "max") {
+						ev.add(rc, id, subj, "%s: %d offline uncorrectable sectors.", name, *dk.Uncorrectable)
 					}
 				case "smart_temperature":
 					if dk.Temperature != nil && float64(*dk.Temperature) >= p(rc, "celsius") {
@@ -268,6 +259,41 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 
 	// Lifetime counters: alert when they grow, compared with the SMART history.
 	if smart, ok := decodeSnap[protocol.SmartData](snaps, protocol.CollectSMART); ok {
+		// Reallocated sectors and media errors: new ones, or a disk first
+		// reported with them; a stable old count does not alert forever.
+		newOrFirst := func(dk protocol.Disk, rc RuleConfig, cur, grew int64, fresh bool) string {
+			switch {
+			case grew > 0:
+				return fmt.Sprintf("%d new in the last %.0f days (%d in total)", grew, p(rc, "days"), cur)
+			case fresh:
+				return fmt.Sprintf("%d (disk first reported within the last %.0f days)", cur, p(rc, "days"))
+			}
+			return ""
+		}
+		s.evalCounter(ctx, ev, rule, d, smart.Disks, now, "smart_reallocated",
+			func(dk protocol.Disk) *int64 { return dk.Reallocated },
+			func(h store.SmartPoint) *int64 { return h.Reallocated },
+			func(dk protocol.Disk, rc RuleConfig, cur, grew int64, fresh bool) string {
+				if float64(cur) <= p(rc, "max") {
+					return ""
+				}
+				if m := newOrFirst(dk, rc, cur, grew, fresh); m != "" {
+					return fmt.Sprintf("%s: reallocated sectors: %s.", diskLabel(dk), m)
+				}
+				return ""
+			})
+		s.evalCounter(ctx, ev, rule, d, smart.Disks, now, "nvme_media_errors",
+			func(dk protocol.Disk) *int64 { return dk.MediaErrors },
+			func(h store.SmartPoint) *int64 { return h.MediaErrors },
+			func(dk protocol.Disk, rc RuleConfig, cur, grew int64, fresh bool) string {
+				if cur <= 0 {
+					return ""
+				}
+				if m := newOrFirst(dk, rc, cur, grew, fresh); m != "" {
+					return fmt.Sprintf("%s: media errors: %s.", diskLabel(dk), m)
+				}
+				return ""
+			})
 		s.evalCounter(ctx, ev, rule, d, smart.Disks, now, "smart_crc",
 			func(dk protocol.Disk) *int64 { return dk.CRCErrors },
 			func(h store.SmartPoint) *int64 { return h.CRCErrors },
@@ -552,22 +578,32 @@ func (s *Server) evalCounter(ctx context.Context, ev *evaluation, rule func(stri
 }
 
 // counterChange compares a lifetime counter with the SMART history (one
-// value per disk and day): grew is the increase over the lowest value since
-// `since`; fresh means the disk has no history before `since`.
+// value per disk and day, the day's latest): grew is the increase over the
+// lowest value since `since`, including the last value before it (the value
+// at the start of the period); fresh means the disk has no history before
+// `since`.
 func (s *Server) counterChange(ctx context.Context, deviceID, serial string, since time.Time, cur int64, pick func(store.SmartPoint) *int64) (grew int64, fresh bool, err error) {
 	hist, err := s.store.SmartHistory(ctx, deviceID, serial, time.Time{})
 	if err != nil {
 		return 0, false, err
 	}
 	fresh, low := true, cur
+	var before *int64
 	for _, h := range hist {
+		v := pick(h)
 		if h.Time.Before(since) {
 			fresh = false
+			if v != nil {
+				before = v
+			}
 			continue
 		}
-		if v := pick(h); v != nil && *v < low {
+		if v != nil && *v < low {
 			low = *v
 		}
+	}
+	if before != nil && *before < low {
+		low = *before
 	}
 	return cur - low, fresh, nil
 }
