@@ -47,7 +47,7 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 | `cmd/inventory-server`, `cmd/inventory-agent`, `cmd/inventory-release` | entry points (server, agent CLI/installer, manifest + signing tool) |
 | `internal/protocol` | wire format shared by agent and server (`data.go` = collector payloads) |
 | `internal/server` | HTTP handlers, ingest, alert rules (`alerts.go` catalog), update targeting (`agents.go`), end-of-support data (`eol.go`), OIDC, areas/access (`access.go`, `handlers_areas.go`), web UI (`web/templates`, `web/static`) |
-| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0008_*.sql`) |
+| `internal/server/store` | SQLite access; schema changes only via new files in `migrations/` (next: `0009_*.sql`) |
 | `internal/agent` | agent loop, self-update, collectors per OS (`*_windows.go`, `*_linux.go`, `*_darwin.go`), installers; shared parsers: `smbios.go` (memory/slots), `sysprofiler.go` (macOS), `proxy.go` (system proxy), `diag.go` (agent diagnostics) |
 | `internal/release` | Ed25519 signing; trusted public key in `keys/official.pub` |
 | `ha-addon/Dockerfile` | image of the Home Assistant add-on (definition in the separate repo `Commifreak/inventory-ha-addon`); add-on mode of the agent: `internal/agent/addon_linux.go` |
@@ -61,6 +61,8 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   must handle nil/zero values.
 - New alert rules: add to `RuleCatalog` in `internal/server/alerts.go` and evaluate in
   `evaluateDevice`; rules that could not be evaluated must not resolve open alerts.
+  Lifetime SMART counters (CRC errors, power losses, …) alert on growth: use `evalCounter`
+  (compares with `smart_history`; new counters need a history column).
 - Windows COM (go-ole): `forEach` releases each collection item itself – callbacks must not
   call `Release()` (double release crashes the process). Run COM in a goroutine with
   `runtime.LockOSThread()` and recover panics.

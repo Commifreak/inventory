@@ -296,13 +296,17 @@ type Disk struct {
 	Pending       *int64 `json:"pending,omitempty"`
 	Uncorrectable *int64 `json:"uncorrectable,omitempty"`
 	CRCErrors     *int64 `json:"crc_errors,omitempty"`
+	// Reported_Uncorrect (187), Command_Timeout (188), Spin_Retry_Count (10).
+	ReportedUncorrect *int64 `json:"reported_uncorrect,omitempty"`
+	CommandTimeout    *int64 `json:"command_timeout,omitempty"`
+	SpinRetry         *int64 `json:"spin_retry,omitempty"`
 	// NVMe health log.
 	PercentUsed     *int     `json:"percent_used,omitempty"`
 	AvailableSpare  *int     `json:"available_spare,omitempty"`
 	SpareThreshold  *int     `json:"spare_threshold,omitempty"`
 	MediaErrors     *int64   `json:"media_errors,omitempty"`
 	CriticalWarning *int     `json:"critical_warning,omitempty"`
-	UnsafeShutdowns *int64   `json:"unsafe_shutdowns,omitempty"`
+	UnsafeShutdowns *int64   `json:"unsafe_shutdowns,omitempty"` // NVMe; ATA 174/192
 	DataWrittenTB   *float64 `json:"data_written_tb,omitempty"`
 	// Raw ATA attribute table for display.
 	Attributes []SmartAttribute `json:"attributes,omitempty"`

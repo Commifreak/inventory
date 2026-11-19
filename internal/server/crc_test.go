@@ -42,3 +42,34 @@ func TestCRCErrorsIncreasing(t *testing.T) {
 		t.Fatalf("no alert for growing CRC errors: %q", m)
 	}
 }
+
+func TestPowerLossIncreasing(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	ctx := context.Background()
+	toks, _ := s.store.ListTokens(ctx)
+	er := enroll(t, ts, toks[0].Token, protocol.Identity{Hostname: "PC", OS: "windows", Arch: "amd64", HardwareID: "HW"})
+	report := func(n int64, at time.Time) {
+		rep := protocol.Report{AgentVersion: "0.0.9", Sections: map[string]protocol.Section{protocol.CollectSMART: {CollectedAt: at, Data: protocol.SmartData{Disks: []protocol.Disk{
+			{Device: "/dev/nvme0", Serial: "N1", Protocol: "NVMe", System: true, HealthPassed: ptr(true), UnsafeShutdowns: ptr(n)}}}}}}
+		postJSON(t, ts.URL+protocol.APIPrefix+"/report", er.Credential, rep, nil)
+		s.runAlerts(ctx, nil)
+	}
+	msg := func() string {
+		alerts, _ := s.store.OpenAlertsForDevice(ctx, er.DeviceID)
+		for _, a := range alerts {
+			if a.Rule == "power_loss" {
+				return a.Message
+			}
+		}
+		return ""
+	}
+	report(87, time.Now().AddDate(0, 0, -3))
+	report(89, time.Now().AddDate(0, 0, -1)) // +2: below the default minimum of 3
+	if m := msg(); m != "" {
+		t.Fatalf("alert below the minimum: %s", m)
+	}
+	report(91, time.Now()) // +4 within 7 days
+	if m := msg(); !strings.Contains(m, "4 unexpected power loss(es)") {
+		t.Fatalf("no power loss alert: %q", m)
+	}
+}

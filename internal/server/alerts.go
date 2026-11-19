@@ -58,6 +58,8 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true, Params: []ParamDef{{"max", "Allowed", "errors", 0}}},
 	{ID: "smart_crc", Group: "Disks", Title: "Interface CRC errors increasing", Description: "The interface CRC error count (ATA attribute 199) grew within the given time – usually a bad cable, connector or slot rather than the disk itself. Errors counted before do not alert.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}}},
+	{ID: "power_loss", Group: "Disks", Title: "Unexpected power losses increasing", Description: "The disk counted unexpected power losses (NVMe unsafe shutdowns, ATA 174/192) within the given time – power cuts, a failing power supply or a device switched off hard. Earlier counts do not alert.",
+		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}, {"min", "At least", "power losses", 3}}},
 	{ID: "smart_temperature", Group: "Disks", Title: "Disk temperature", Description: "Drive temperature at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"celsius", "Threshold", "°C", 65}}},
 	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "Used endurance of an SSD (NVMe 'percentage used', SATA/SAS endurance indicator or wear attributes) or eMMC life time estimate at or above the threshold.",
@@ -264,38 +266,26 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 		}
 	}
 
-	// CRC errors are a lifetime counter: alert only when it grows, compared
-	// with the SMART history (one value per disk and day).
+	// Lifetime counters: alert when they grow, compared with the SMART history.
 	if smart, ok := decodeSnap[protocol.SmartData](snaps, protocol.CollectSMART); ok {
-		if rc, on := rule("smart_crc"); on {
-			since := now.Add(-time.Duration(p(rc, "days") * 24 * float64(time.Hour)))
-			evaluated := true
-			var found []finding
-			for _, dk := range smart.Disks {
-				if dk.CRCErrors == nil || dk.Serial == "" || (rc.SystemDiskOnly && !dk.System) || (dk.External && !rc.SystemDiskOnly) {
-					continue
+		s.evalCounter(ctx, ev, rule, d, smart.Disks, now, "smart_crc",
+			func(dk protocol.Disk) *int64 { return dk.CRCErrors },
+			func(h store.SmartPoint) *int64 { return h.CRCErrors },
+			func(dk protocol.Disk, rc RuleConfig, cur, grew int64, _ bool) string {
+				if grew <= 0 {
+					return ""
 				}
-				hist, err := s.store.SmartHistory(ctx, d.ID, dk.Serial, since)
-				if err != nil {
-					evaluated = false // open alerts must not be resolved
-					break
+				return fmt.Sprintf("%s: %d new interface CRC error(s) in the last %.0f days (%d in total). Check the cable/connector.", diskLabel(dk), grew, p(rc, "days"), cur)
+			})
+		s.evalCounter(ctx, ev, rule, d, smart.Disks, now, "power_loss",
+			func(dk protocol.Disk) *int64 { return dk.UnsafeShutdowns },
+			func(h store.SmartPoint) *int64 { return h.UnsafeShutdowns },
+			func(dk protocol.Disk, rc RuleConfig, cur, grew int64, _ bool) string {
+				if grew <= 0 || float64(grew) < p(rc, "min") {
+					return ""
 				}
-				low := *dk.CRCErrors
-				for _, h := range hist {
-					if h.CRCErrors != nil && *h.CRCErrors < low {
-						low = *h.CRCErrors
-					}
-				}
-				if grew := *dk.CRCErrors - low; grew > 0 {
-					found = append(found, finding{Rule: "smart_crc", Subject: diskSubject(dk), Severity: rc.Severity,
-						Message: fmt.Sprintf("%s: %d new interface CRC error(s) in the last %.0f days (%d in total). Check the cable/connector.", diskLabel(dk), grew, p(rc, "days"), *dk.CRCErrors)})
-				}
-			}
-			if evaluated {
-				ev.ok("smart_crc")
-				ev.findings = append(ev.findings, found...)
-			}
-		}
+				return fmt.Sprintf("%s: %d unexpected power loss(es) in the last %.0f days (%d in total). Check the power supply, or the device was switched off hard.", diskLabel(dk), grew, p(rc, "days"), cur)
+			})
 	}
 
 	sys, sysOK := decodeSnap[protocol.SystemInfo](snaps, protocol.CollectSystem)
@@ -529,6 +519,57 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 		}
 	}
 	return ev
+}
+
+// evalCounter evaluates a rule on a lifetime SMART counter of every disk.
+// msg gets the current value, its growth within the rule's "days" and
+// whether the disk was first reported within that period; it returns the
+// alert message or "" for no alert. If the history cannot be read, the rule
+// counts as not evaluated, so open alerts are kept.
+func (s *Server) evalCounter(ctx context.Context, ev *evaluation, rule func(string) (RuleConfig, bool), d *store.Device, disks []protocol.Disk, now time.Time,
+	id string, value func(protocol.Disk) *int64, pick func(store.SmartPoint) *int64, msg func(dk protocol.Disk, rc RuleConfig, cur, grew int64, fresh bool) string) {
+	rc, on := rule(id)
+	if !on {
+		return
+	}
+	since := now.Add(-time.Duration(rc.Params["days"] * 24 * float64(time.Hour)))
+	var found []finding
+	for _, dk := range disks {
+		cur := value(dk)
+		if cur == nil || dk.Serial == "" || (rc.SystemDiskOnly && !dk.System) || (dk.External && !rc.SystemDiskOnly) {
+			continue
+		}
+		grew, fresh, err := s.counterChange(ctx, d.ID, dk.Serial, since, *cur, pick)
+		if err != nil {
+			return
+		}
+		if m := msg(dk, rc, *cur, grew, fresh); m != "" {
+			found = append(found, finding{Rule: id, Subject: diskSubject(dk), Severity: rc.Severity, Message: m})
+		}
+	}
+	ev.ok(id)
+	ev.findings = append(ev.findings, found...)
+}
+
+// counterChange compares a lifetime counter with the SMART history (one
+// value per disk and day): grew is the increase over the lowest value since
+// `since`; fresh means the disk has no history before `since`.
+func (s *Server) counterChange(ctx context.Context, deviceID, serial string, since time.Time, cur int64, pick func(store.SmartPoint) *int64) (grew int64, fresh bool, err error) {
+	hist, err := s.store.SmartHistory(ctx, deviceID, serial, time.Time{})
+	if err != nil {
+		return 0, false, err
+	}
+	fresh, low := true, cur
+	for _, h := range hist {
+		if h.Time.Before(since) {
+			fresh = false
+			continue
+		}
+		if v := pick(h); v != nil && *v < low {
+			low = *v
+		}
+	}
+	return cur - low, fresh, nil
 }
 
 func diskSubject(d protocol.Disk) string {

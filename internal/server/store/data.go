@@ -136,19 +136,28 @@ type SmartPoint struct {
 	PercentUsed    *int64
 	AvailableSpare *int64
 	MediaErrors    *int64
+	// Counters for "increasing" rules.
+	UnsafeShutdowns   *int64
+	ReportedUncorrect *int64
+	CommandTimeout    *int64
+	SpinRetry         *int64
 }
 
 func (s *Store) PutSmartPoint(ctx context.Context, tx *sql.Tx, deviceID string, p SmartPoint) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO smart_history(device_id, serial, day, ts, health_passed, temperature, power_on_hours, reallocated, pending, uncorrectable, crc_errors, percent_used, available_spare, media_errors)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(device_id, serial, day) DO UPDATE SET ts=excluded.ts, health_passed=excluded.health_passed, temperature=excluded.temperature,
+	_, err := tx.ExecContext(ctx, `INSERT INTO smart_history(device_id, serial, day, ts, health_passed, temperature, power_on_hours, reallocated, pending, uncorrectable, crc_errors, percent_used, available_spare, media_errors,
+ unsafe_shutdowns, reported_uncorrect, command_timeout, spin_retry)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(device_id, serial, day) DO UPDATE SET ts=excluded.ts, health_passed=excluded.health_passed, temperature=excluded.temperature,
  power_on_hours=excluded.power_on_hours, reallocated=excluded.reallocated, pending=excluded.pending, uncorrectable=excluded.uncorrectable, crc_errors=excluded.crc_errors,
- percent_used=excluded.percent_used, available_spare=excluded.available_spare, media_errors=excluded.media_errors`,
-		deviceID, p.Serial, p.Day, p.Time.Unix(), p.HealthPassed, p.Temperature, p.PowerOnHours, p.Reallocated, p.Pending, p.Uncorrectable, p.CRCErrors, p.PercentUsed, p.AvailableSpare, p.MediaErrors)
+ percent_used=excluded.percent_used, available_spare=excluded.available_spare, media_errors=excluded.media_errors, unsafe_shutdowns=excluded.unsafe_shutdowns,
+ reported_uncorrect=excluded.reported_uncorrect, command_timeout=excluded.command_timeout, spin_retry=excluded.spin_retry`,
+		deviceID, p.Serial, p.Day, p.Time.Unix(), p.HealthPassed, p.Temperature, p.PowerOnHours, p.Reallocated, p.Pending, p.Uncorrectable, p.CRCErrors, p.PercentUsed, p.AvailableSpare, p.MediaErrors,
+		p.UnsafeShutdowns, p.ReportedUncorrect, p.CommandTimeout, p.SpinRetry)
 	return err
 }
 
 func (s *Store) SmartHistory(ctx context.Context, deviceID, serial string, since time.Time) ([]SmartPoint, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT serial, day, ts, health_passed, temperature, power_on_hours, reallocated, pending, uncorrectable, crc_errors, percent_used, available_spare, media_errors
+	rows, err := s.DB.QueryContext(ctx, `SELECT serial, day, ts, health_passed, temperature, power_on_hours, reallocated, pending, uncorrectable, crc_errors, percent_used, available_spare, media_errors,
+ unsafe_shutdowns, reported_uncorrect, command_timeout, spin_retry
 FROM smart_history WHERE device_id=? AND serial=? AND ts>=? ORDER BY day`, deviceID, serial, since.Unix())
 	if err != nil {
 		return nil, err
@@ -159,8 +168,9 @@ FROM smart_history WHERE device_id=? AND serial=? AND ts>=? ORDER BY day`, devic
 		var p SmartPoint
 		var ts int64
 		var hp sql.NullBool
-		var vals [9]sql.NullInt64
-		if err := rows.Scan(&p.Serial, &p.Day, &ts, &hp, &vals[0], &vals[1], &vals[2], &vals[3], &vals[4], &vals[5], &vals[6], &vals[7], &vals[8]); err != nil {
+		var vals [13]sql.NullInt64
+		if err := rows.Scan(&p.Serial, &p.Day, &ts, &hp, &vals[0], &vals[1], &vals[2], &vals[3], &vals[4], &vals[5], &vals[6], &vals[7], &vals[8],
+			&vals[9], &vals[10], &vals[11], &vals[12]); err != nil {
 			return nil, err
 		}
 		p.Time = time.Unix(ts, 0)
@@ -177,6 +187,7 @@ FROM smart_history WHERE device_id=? AND serial=? AND ts>=? ORDER BY day`, devic
 		}
 		p.Temperature, p.PowerOnHours, p.Reallocated, p.Pending, p.Uncorrectable = ptr(vals[0]), ptr(vals[1]), ptr(vals[2]), ptr(vals[3]), ptr(vals[4])
 		p.CRCErrors, p.PercentUsed, p.AvailableSpare, p.MediaErrors = ptr(vals[5]), ptr(vals[6]), ptr(vals[7]), ptr(vals[8])
+		p.UnsafeShutdowns, p.ReportedUncorrect, p.CommandTimeout, p.SpinRetry = ptr(vals[9]), ptr(vals[10]), ptr(vals[11]), ptr(vals[12])
 		out = append(out, p)
 	}
 	return out, rows.Err()

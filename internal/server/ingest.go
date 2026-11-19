@@ -86,7 +86,8 @@ func (s *Server) derive(ctx context.Context, tx *sql.Tx, d *store.Device, name s
 			}
 			p := store.SmartPoint{Serial: dk.Serial, Day: day, Time: sec.CollectedAt, HealthPassed: dk.HealthPassed,
 				PowerOnHours: dk.PowerOnHours, Reallocated: dk.Reallocated, Pending: dk.Pending, Uncorrectable: dk.Uncorrectable,
-				CRCErrors: dk.CRCErrors, MediaErrors: dk.MediaErrors,
+				CRCErrors: dk.CRCErrors, MediaErrors: dk.MediaErrors, UnsafeShutdowns: dk.UnsafeShutdowns,
+				ReportedUncorrect: dk.ReportedUncorrect, CommandTimeout: dk.CommandTimeout, SpinRetry: dk.SpinRetry,
 				Temperature: i64(dk.Temperature), PercentUsed: i64(dk.PercentUsed), AvailableSpare: i64(dk.AvailableSpare)}
 			if err := s.store.PutSmartPoint(ctx, tx, d.ID, p); err != nil {
 				return nil, err
