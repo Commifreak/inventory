@@ -79,7 +79,8 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
 - The server distributes only agent versions bundled in its image (`AGENTS_DIR`, copied to
   `DATA_DIR/agents`); agents update only after the image is re-pulled.
 - Agents refuse unsigned updates. CI signs with the GitHub secret `RELEASE_SIGNING_KEY`
-  passed via `secret-envs` (the `secrets` input of build-push-action breaks multi-line PEM).
+  passed via `secret-envs` (the `secrets` input of build-push-action breaks multi-line PEM);
+  the build arg `REQUIRE_SIGNATURE=1` makes the image build fail if the key does not arrive.
 - After an agent version change all collectors run once immediately (`resetOnVersionChange`).
 - Hardware quirks are handled by data, not names: Windows storage controller types come from
   the PCI class code (`CC_0106…`), vendors from the PCI vendor ID; M.2 slots are also

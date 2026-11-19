@@ -67,7 +67,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ steps.v.outputs.version }}
+          build-args: |
+            VERSION=${{ steps.v.outputs.version }}
+            REQUIRE_SIGNATURE=1
           secret-envs: |
             release_signing_key=RELEASE_SIGNING_KEY
           cache-from: type=gha
