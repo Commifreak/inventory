@@ -93,7 +93,8 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   per device (`seen_items`, first report = baseline) and are stored as events; evaluate them
   in the event-rule loop. Event-rule alerts get no reminders: their findings carry an `eventSpec`, and
   events received after the last notification are mailed as "New events". Values that only grow
-  and cannot be fixed (SSD wear) carry a `levelSpec`: no reminders, a mail per step. Rules can be disabled per device (`devices.disabled_rules`).
+  and cannot be fixed (SSD wear; lifetime counters via `evalCounter`, `counterLevel`) carry a
+  `levelSpec`: no reminders, a mail per step. Rules can be disabled per device (`devices.disabled_rules`).
 - Rejected enrollments/installer downloads (unknown/revoked token) are logged to the server
   log and audit log with only a token prefix.
 - Tests must not depend on the host (e.g. `pci.ids`, `/etc/environment`) and must not write

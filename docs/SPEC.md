@@ -160,7 +160,9 @@ past and the alert closes when they leave the rule's time window; events receive
 notification are mailed as "New events" with only the new entries. SSD wear only grows and cannot
 be fixed: no reminders either, but another mail ("Increased") every further 10 percentage points
 above the threshold (`alerts.notified_value`); above 100 % the message says the drive is beyond
-its rating and whether it reports errors.
+its rating and whether it reports errors. Growth-based disk rules (CRC errors, unexpected power
+losses, error counters 187/188/10, reallocated sectors, NVMe media errors) work the same with a
+step of 1: no reminders, a mail on every further increase while the alert is open.
 
 ## Areas
 

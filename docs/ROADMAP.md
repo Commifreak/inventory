@@ -35,6 +35,8 @@
 - Read-only system checks on demand or monthly: `chkdsk` without repair, DISM
   `/checkhealth`/`/scanhealth` (via dismapi), `sfc /verifyonly` (output is localized –
   CBS log parsing needed). Repairs stay manual (read-only principle).
+- PCIe bus errors (NVMe has no CRC counter in its SMART log): Windows WHEA events,
+  Linux PCIe AER messages, as event rule.
 
 ## Decided against
 
