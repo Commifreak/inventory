@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -152,5 +153,30 @@ func TestManagedAgentGetsNoUpdates(t *testing.T) {
 	postJSON(t, api+"/checkin", er.Credential, protocol.CheckinRequest{AgentVersion: "0.0.1"}, &cr)
 	if d, _ := s.store.DeviceByID(ctx, er.DeviceID); d.Managed != "" {
 		t.Fatalf("managed flag not cleared: %q", d.Managed)
+	}
+}
+
+func TestDeviceRulesForm(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	ctx := context.Background()
+	toks, _ := s.store.ListTokens(ctx)
+	er := enroll(t, ts, toks[0].Token, protocol.Identity{Hostname: "PC", OS: "windows", Arch: "amd64", HardwareID: "HW"})
+	admin, _ := s.store.UserByName(ctx, "admin")
+	_ = s.store.SetPassword(ctx, admin.ID, admin.PasswordHash, false)
+	adm, _ := login(t, ts, "admin", "initial-password-1")
+	// Checked = evaluated: everything except the firewall rule stays on.
+	form := url.Values{"form": {"enabled"}}
+	for _, def := range RuleCatalog {
+		if def.ID != "firewall_off" {
+			form.Add("enabled", def.ID)
+		}
+	}
+	adm.post("/devices/"+er.DeviceID+"/rules", form)
+	if d, _ := s.store.DeviceByID(ctx, er.DeviceID); len(d.DisabledRules) != 1 || d.DisabledRules[0] != "firewall_off" {
+		t.Fatalf("disabled rules: %v", d.DisabledRules)
+	}
+	_, p := adm.get("/devices/" + er.DeviceID + "?tab=alerts")
+	if !strings.Contains(p, `name="enabled" value="firewall_off" >`) || !strings.Contains(p, `name="enabled" value="offline" checked>`) || !strings.Contains(p, "off globally") {
+		t.Errorf("rules form does not show checked = evaluated")
 	}
 }

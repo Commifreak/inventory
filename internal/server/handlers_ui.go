@@ -373,6 +373,12 @@ func (w *webUI) handleDevice(rw http.ResponseWriter, r *http.Request) {
 			slices.Reverse(rev)
 			data["DiagLog"] = rev
 		}
+	case "alerts":
+		global := map[string]bool{}
+		for id, rc := range s.alertSettings(ctx).Rules {
+			global[id] = rc.Enabled
+		}
+		data["GlobalRules"] = global
 	case "raw":
 		data["Diag"], _ = s.store.GetAgentDiagnostics(ctx, d.ID)
 	}
@@ -441,9 +447,19 @@ func (w *webUI) handleDeviceRules(rw http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.ParseForm()
 	var rules []string
-	for _, id := range r.PostForm["disabled"] {
-		if ruleDef(id) != nil && !slices.Contains(rules, id) {
-			rules = append(rules, id)
+	if r.PostFormValue("form") == "enabled" {
+		// Checked = evaluated; every unchecked rule is disabled for the device.
+		enabled := r.PostForm["enabled"]
+		for _, def := range RuleCatalog {
+			if !slices.Contains(enabled, def.ID) {
+				rules = append(rules, def.ID)
+			}
+		}
+	} else {
+		for _, id := range r.PostForm["disabled"] { // form of older pages
+			if ruleDef(id) != nil && !slices.Contains(rules, id) {
+				rules = append(rules, id)
+			}
 		}
 	}
 	if err := w.s.store.SetDisabledRules(r.Context(), d.ID, rules); err != nil {

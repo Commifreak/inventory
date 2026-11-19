@@ -406,11 +406,12 @@
 <section class="card">
   <details {{if $dev.DisabledRules}}open{{end}}>
     <summary><b>Rules for this device</b>{{if $dev.DisabledRules}} – {{len $dev.DisabledRules}} disabled{{end}}</summary>
-    <p class="hint">Rules checked here are not evaluated for this device (e.g. a firewall that is off on purpose); their open alerts are resolved.{{if .Super}} Global rule settings: <a href="/settings/alerts">Settings → Alert rules</a>.{{end}}</p>
+    <p class="hint">Checked rules are evaluated for this device. Uncheck a rule to turn it off for this device only (e.g. a firewall that is off on purpose); its open alerts are resolved.{{if .Super}} Global rule settings: <a href="/settings/alerts">Settings → Alert rules</a>.{{end}}</p>
     <form method="post" action="/devices/{{$dev.ID}}/rules">
       {{template "csrf" .CSRF}}
+      <input type="hidden" name="form" value="enabled">
       <div class="rulechecks">
-      {{range ruleCatalog}}<label class="check"><input type="checkbox" name="disabled" value="{{.ID}}" {{if hasString $dev.DisabledRules .ID}}checked{{end}}> <span>{{.Title}} <span class="sub">{{.Group}}</span></span></label>{{end}}
+      {{range ruleCatalog}}<label class="check"><input type="checkbox" name="enabled" value="{{.ID}}" {{if not (hasString $dev.DisabledRules .ID)}}checked{{end}}> <span>{{.Title}} <span class="sub">{{.Group}}{{if not (index $d.GlobalRules .ID)}} · off globally{{end}}</span></span></label>{{end}}
       </div>
       <button class="primary">Save</button>
     </form>
