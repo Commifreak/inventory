@@ -157,7 +157,10 @@ alerts (HTML with a plain text alternative, inline styles, light and dark colour
 Event alerts (bluescreens, disk error events, OOM kills, undervoltage, malware detections, new
 administrators/autostart entries/Defender exclusions) get no reminders – the events are in the
 past and the alert closes when they leave the rule's time window; events received after the last
-notification are mailed as "New events" with only the new entries.
+notification are mailed as "New events" with only the new entries. SSD wear only grows and cannot
+be fixed: no reminders either, but another mail ("Increased") every further 10 percentage points
+above the threshold (`alerts.notified_value`); above 100 % the message says the drive is beyond
+its rating and whether it reports errors.
 
 ## Areas
 

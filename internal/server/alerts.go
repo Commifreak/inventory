@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,7 +68,7 @@ var RuleCatalog = []RuleDef{
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"days", "Within", "days", 7}, {"min", "At least", "power losses", 3}}},
 	{ID: "smart_temperature", Group: "Disks", Title: "Disk temperature", Description: "Drive temperature at or above the threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"celsius", "Threshold", "°C", 65}}},
-	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "Used endurance of an SSD (NVMe 'percentage used', SATA/SAS endurance indicator or wear attributes) or eMMC life time estimate at or above the threshold.",
+	{ID: "nvme_wear", Group: "Disks", Title: "SSD wear", Description: "Used endurance of an SSD (NVMe 'percentage used', SATA/SAS endurance indicator or wear attributes) or eMMC life time estimate at or above the threshold. No reminders – another mail every further 10 percentage points.",
 		DefaultEnabled: true, DefaultSeverity: SevWarning, DiskScope: true, Params: []ParamDef{{"percent", "Threshold", "%", 90}}},
 	{ID: "nvme_critical", Group: "Disks", Title: "SSD critical warning", Description: "NVMe critical warning flags set, or the available spare (reserve blocks) of an NVMe/SATA SSD at or below the vendor threshold.",
 		DefaultEnabled: true, DefaultSeverity: SevCritical, DiskScope: true},
@@ -141,7 +143,18 @@ type finding struct {
 	Severity string
 	Message  string
 	event    *eventSpec // set for findings of event rules
+	level    *levelSpec // set for step-notified findings
 }
+
+// levelSpec describes a finding of a value that only grows and cannot be
+// fixed (SSD wear). Such alerts get no reminders; they are mailed again when
+// the value reaches the next step (base + n*step).
+type levelSpec struct {
+	value, base, step float64
+	unit              string
+}
+
+func (l *levelSpec) mark(v float64) float64 { return math.Floor((v - l.base) / l.step) }
 
 // eventSpec describes the events behind a finding of an event rule. Such
 // alerts are not repeated as reminders – the events are in the past and the
@@ -162,10 +175,15 @@ type alertChanges struct {
 	// updated are open event alerts with new events; their Message lists
 	// only the events received since the last notification.
 	updated []store.Alert
+	// increased are step-notified alerts whose value reached the next step.
+	increased []store.Alert
+	// levels holds the current value of step-notified alerts (by alert ID),
+	// stored once they are notified.
+	levels map[int64]float64
 }
 
 func (c alertChanges) empty() bool {
-	return len(c.opened)+len(c.resolved)+len(c.renotify)+len(c.updated) == 0
+	return len(c.opened)+len(c.resolved)+len(c.renotify)+len(c.updated)+len(c.increased) == 0
 }
 
 func (f finding) key() string { return f.Rule + "\x00" + f.Subject }
@@ -272,7 +290,15 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 					}
 				case "nvme_wear":
 					if dk.PercentUsed != nil && float64(*dk.PercentUsed) >= p(rc, "percent") {
-						ev.add(rc, id, subj, "%s: %d%% of rated endurance used.", name, *dk.PercentUsed)
+						msg := fmt.Sprintf("%s: %d%% of rated endurance used", name, *dk.PercentUsed)
+						if *dk.PercentUsed > 100 {
+							msg += " – beyond the manufacturer's rating"
+							if !diskErrors(dk) {
+								msg += ", no errors reported so far"
+							}
+						}
+						ev.add(rc, id, subj, "%s.", msg)
+						ev.findings[len(ev.findings)-1].level = &levelSpec{value: float64(*dk.PercentUsed), base: p(rc, "percent"), step: 10, unit: "%"}
 					}
 				case "nvme_critical":
 					if dk.CriticalWarning != nil && *dk.CriticalWarning != 0 {
@@ -694,6 +720,17 @@ func (s *Server) counterChange(ctx context.Context, deviceID, serial string, sin
 	return cur - low, fresh, nil
 }
 
+// diskErrors reports whether a disk has reallocated, pending or
+// uncorrectable sectors or media errors.
+func diskErrors(d protocol.Disk) bool {
+	for _, v := range []*int64{d.Reallocated, d.Pending, d.Uncorrectable, d.ReportedUncorrect, d.MediaErrors} {
+		if v != nil && *v > 0 {
+			return true
+		}
+	}
+	return d.HealthPassed != nil && !*d.HealthPassed
+}
+
 func diskSubject(d protocol.Disk) string {
 	if d.Serial != "" {
 		return d.Serial
@@ -793,6 +830,7 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 	if err != nil {
 		return
 	}
+	ch.levels = map[int64]float64{}
 	cur := map[string]finding{}
 	for _, f := range ev.findings {
 		cur[f.key()] = f
@@ -807,11 +845,23 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 				_ = s.store.TouchAlert(ctx, a.ID, f.Severity, f.Message, now)
 			}
 			a.Severity, a.Message = f.Severity, f.Message
+			if f.level != nil {
+				ch.levels[a.ID] = f.level.value
+			}
 			switch {
 			case a.LastNotifiedAt.IsZero():
 				// Never notified (e.g. SMTP was not configured): try again.
 				if !d.AlertsMuted {
 					ch.renotify = append(ch.renotify, a)
+				}
+			case f.level != nil:
+				// No reminders, a mail per step instead.
+				if a.NotifiedValue == nil {
+					// Notified before values were recorded: start from now.
+					_ = s.store.SetAlertNotifiedValue(ctx, a.ID, f.level.value)
+				} else if f.level.mark(f.level.value) > f.level.mark(*a.NotifiedValue) {
+					a.Message += fmt.Sprintf(" Previously notified at %s%s.", strconv.FormatFloat(*a.NotifiedValue, 'f', -1, 64), f.level.unit)
+					ch.increased = append(ch.increased, a)
 				}
 			case f.event != nil:
 				// Event alerts get no reminders, only their new events.
@@ -828,6 +878,9 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 		if err := s.store.InsertAlert(ctx, &a); err != nil {
 			s.log.Warn("insert alert", "err", err)
 			continue
+		}
+		if f.level != nil {
+			ch.levels[a.ID] = f.level.value
 		}
 		ch.opened = append(ch.opened, a)
 	}
@@ -908,6 +961,8 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 			b.renotify = append(b.renotify, a)
 		case "updated":
 			b.updated = append(b.updated, a)
+		case "increased":
+			b.increased = append(b.increased, a)
 		}
 	}
 	for _, a := range ch.opened {
@@ -922,6 +977,9 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 	for _, a := range ch.updated {
 		add(a, "updated")
 	}
+	for _, a := range ch.increased {
+		add(a, "increased")
+	}
 	for _, b := range batches {
 		if b.empty() {
 			continue
@@ -930,8 +988,11 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 			s.log.Warn("sending alert mail failed", "device", d.ID, "err", err)
 			continue
 		}
-		for _, a := range slices.Concat(b.opened, b.updated, b.renotify, b.resolved) {
+		for _, a := range slices.Concat(b.opened, b.updated, b.increased, b.renotify, b.resolved) {
 			_ = s.store.MarkAlertNotified(ctx, a.ID, now)
+			if v, ok := ch.levels[a.ID]; ok && a.ResolvedAt.IsZero() {
+				_ = s.store.SetAlertNotifiedValue(ctx, a.ID, v)
+			}
 		}
 	}
 }
@@ -955,7 +1016,7 @@ func mergeRecipients(lists ...[]string) []string {
 }
 
 func (s *Server) alertMail(ctx context.Context, d *store.Device, ch alertChanges) Mail {
-	opened, resolved, renotify, updated := ch.opened, ch.resolved, ch.renotify, ch.updated
+	opened, resolved, renotify, updated, increased := ch.opened, ch.resolved, ch.renotify, ch.updated, ch.increased
 	g := s.generalSettings(ctx)
 	title := func(a store.Alert) string {
 		if def := ruleDef(a.Rule); def != nil {
@@ -963,7 +1024,7 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, ch alertChanges
 		}
 		return a.Rule
 	}
-	active := slices.Concat(opened, updated, renotify)
+	active := slices.Concat(opened, updated, increased, renotify)
 	sev := SevWarning
 	for _, a := range active {
 		if a.Severity == SevCritical {
@@ -978,7 +1039,7 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, ch alertChanges
 			subj += fmt.Sprintf(" (+%d more)", n-1)
 		}
 		switch {
-		case len(opened) == 1 && len(renotify)+len(updated) == 0:
+		case len(opened) == 1 && len(renotify)+len(updated)+len(increased) == 0:
 			heading = "New alert"
 		case len(opened) > 0:
 			heading = fmt.Sprintf("%d new alerts", len(opened))
@@ -986,6 +1047,11 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, ch alertChanges
 			heading = "New events"
 			if len(updated) > 1 {
 				heading = fmt.Sprintf("New events for %d alerts", len(updated))
+			}
+		case len(increased) > 0:
+			heading = "Alert increased"
+			if len(increased) > 1 {
+				heading = fmt.Sprintf("%d alerts increased", len(increased))
 			}
 		default:
 			heading = fmt.Sprintf("%d alert(s) still open", len(renotify))
@@ -1053,6 +1119,7 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, ch alertChanges
 	}
 	section("New alerts", opened, false)
 	section("New events", updated, false)
+	section("Increased", increased, false)
 	section("Still open", renotify, false)
 	section("Resolved", resolved, true)
 	if md.URL != "" {

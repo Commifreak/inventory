@@ -26,21 +26,26 @@ type Alert struct {
 	ResolvedAt     time.Time
 	LastNotifiedAt time.Time
 	NotifyCount    int
+	NotifiedValue  *float64 // value at the last notification (step-notified rules)
 }
 
-const alertCols = `id, COALESCE(device_id,''), rule, subject, severity, state, message, opened_at, last_seen_at, resolved_at, last_notified_at, notify_count`
+const alertCols = `id, COALESCE(device_id,''), rule, subject, severity, state, message, opened_at, last_seen_at, resolved_at, last_notified_at, notify_count, notified_value`
 
 func scanAlert(row interface{ Scan(...any) error }) (*Alert, error) {
 	var a Alert
 	var o, l int64
 	var r, n sql.NullInt64
-	if err := row.Scan(&a.ID, &a.DeviceID, &a.Rule, &a.Subject, &a.Severity, &a.State, &a.Message, &o, &l, &r, &n, &a.NotifyCount); err != nil {
+	var v sql.NullFloat64
+	if err := row.Scan(&a.ID, &a.DeviceID, &a.Rule, &a.Subject, &a.Severity, &a.State, &a.Message, &o, &l, &r, &n, &a.NotifyCount, &v); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 	a.OpenedAt, a.LastSeenAt, a.ResolvedAt, a.LastNotifiedAt = time.Unix(o, 0), time.Unix(l, 0), tu(r), tu(n)
+	if v.Valid {
+		a.NotifiedValue = &v.Float64
+	}
 	return &a, nil
 }
 
@@ -113,5 +118,11 @@ func (s *Store) ResolveAlert(ctx context.Context, id int64, at time.Time) error 
 
 func (s *Store) MarkAlertNotified(ctx context.Context, id int64, at time.Time) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE alerts SET last_notified_at=?, notify_count=notify_count+1 WHERE id=?`, at.Unix(), id)
+	return err
+}
+
+// SetAlertNotifiedValue records the value an alert was last notified with.
+func (s *Store) SetAlertNotifiedValue(ctx context.Context, id int64, v float64) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE alerts SET notified_value=? WHERE id=?`, v, id)
 	return err
 }
