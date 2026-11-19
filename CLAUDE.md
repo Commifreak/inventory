@@ -32,6 +32,10 @@ DATA_DIR=./data AGENTS_DIR=./dist/agents INITIAL_ADMIN_PASSWORD=dev-password-123
   LISTEN_ADDR=127.0.0.1:8080 go run ./cmd/inventory-server
 ```
 
+`.github/workflows/vulncheck.yml` runs `govulncheck` for linux/windows/darwin on every change
+and weekly; its Go version must match `GO_VERSION` in the Dockerfiles. A finding fails the run:
+update the module (or Go) in a PR, then ask the maintainer for a patch release.
+
 Windows code cannot run here (Linux container): compile/vet it with `GOOS=windows`; the CI
 job on `windows-latest` (a Hyper-V VM) runs the real collectors (`inventory-agent collect`,
 prints memory modules, slots and storage controllers) and checks the WinHTTP proxy path.
