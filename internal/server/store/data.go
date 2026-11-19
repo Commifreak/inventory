@@ -291,6 +291,29 @@ func (s *Store) CountEvents(ctx context.Context, deviceID, kind string, since ti
 	return n, err
 }
 
+// EventsReceivedAfter returns the events of a kind since t (event time) that
+// the server received after the given time, newest first. Events on external
+// disks are only included when includeExternal is set.
+func (s *Store) EventsReceivedAfter(ctx context.Context, deviceID, kind string, since, after time.Time, includeExternal bool) ([]Event, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT device_id, key, kind, ts, COALESCE(source,''), COALESCE(event_id,0), COALESCE(disk,''), external, COALESCE(message,''), received_at
+FROM events WHERE device_id=? AND kind=? AND ts>=? AND received_at>? AND (external=0 OR ?) ORDER BY ts DESC LIMIT 500`, deviceID, kind, since.Unix(), after.Unix(), includeExternal)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var ts, rec int64
+		if err := rows.Scan(&e.DeviceID, &e.Key, &e.Kind, &ts, &e.Source, &e.EventID, &e.Disk, &e.External, &e.Message, &rec); err != nil {
+			return nil, err
+		}
+		e.Time, e.ReceivedAt = time.Unix(ts, 0), time.Unix(rec, 0)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // ---------------------------------------------------------------------------
 // retention
 // ---------------------------------------------------------------------------

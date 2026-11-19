@@ -11,6 +11,7 @@
     <label>Remind about open alerts every (hours, 0 = never) <input name="renotify_hours" inputmode="numeric" class="short" value="{{$d.Settings.RenotifyHours}}"></label>
     <label class="check"><input type="checkbox" name="notify_resolved" value="1" {{if $d.Settings.NotifyResolved}}checked{{end}}> Notify when an alert is resolved</label>
   </div>
+  <p class="hint">Alerts about events (bluescreens, new administrators, autostart entries, Defender exclusions, …) are not repeated: they stay open until the events leave the rule's time window, and new events arriving in the meantime are mailed.</p>
 </section>
 
 {{range $g := $d.Groups}}
