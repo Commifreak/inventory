@@ -268,22 +268,39 @@ func (e *EOLData) OfficeLookup(items []protocol.SoftwareItem) []OfficeEOL {
 func eolKey(o protocol.OSInfo) (product string, cycles []string, label string) {
 	switch o.Family {
 	case protocol.OSWindows:
-		if o.DisplayVersion == "" {
+		if strings.Contains(o.Name, "Server") {
 			return "", nil, ""
 		}
 		major := "10"
 		if strings.Contains(o.Name, "Windows 11") {
 			major = "11"
 		}
-		if strings.Contains(o.Name, "Server") || strings.Contains(o.Name, "LTSC") || strings.Contains(o.Name, "LTSB") {
+		dv := strings.ToLower(o.DisplayVersion)
+		if dv == "" {
+			// Older LTSB/LTSC releases have no display version.
+			dv = map[string]string{"10240": "1507", "14393": "1607", "17763": "1809"}[strings.SplitN(o.Build, ".", 2)[0]]
+		}
+		if dv == "" {
 			return "", nil, ""
 		}
-		ed := "w"
+		// Long-term servicing editions (EnterpriseS, IoTEnterpriseS, EnterpriseSN) have
+		// their own cycles: "11-24h2-iot-lts", "11-24h2-e-lts".
+		ed := strings.ToLower(o.Edition)
+		if strings.Contains(o.Name, "LTSC") || strings.Contains(o.Name, "LTSB") || strings.HasSuffix(ed, "enterprises") || strings.HasSuffix(ed, "enterprisesn") {
+			cands := []string{major + "-" + dv + "-e-lts"}
+			if strings.Contains(strings.ToLower(o.Name+" "+o.Edition), "iot") {
+				cands = append([]string{major + "-" + dv + "-iot-lts"}, cands...)
+			}
+			return "windows", cands, o.Name
+		}
+		if o.DisplayVersion == "" {
+			return "", nil, ""
+		}
+		ed = "w"
 		low := strings.ToLower(o.Name + " " + o.Edition)
 		if strings.Contains(low, "enterprise") || strings.Contains(low, "education") {
 			ed = "e"
 		}
-		dv := strings.ToLower(o.DisplayVersion)
 		return "windows", []string{major + "-" + dv + "-" + ed, major + "-" + dv}, fmt.Sprintf("Windows %s %s", major, o.DisplayVersion)
 	case protocol.OSDarwin:
 		v := strings.SplitN(o.Version, ".", 2)[0]

@@ -135,7 +135,7 @@ parameters, optional "system disk only" and optional recipient override:
 device offline (default 7 days, per-device override), agent update failed,
 SMART failed / reallocated / pending / uncorrectable / temperature / NVMe wear /
 NVMe critical, low disk space, update failed, updates pending too long, update
-check failing, reboot pending too long, OS end of support (endoflife.date, fetched daily and
+check failing, reboot pending too long, OS end of support (endoflife.date incl. Windows LTSC/IoT LTSC cycles, fetched daily and
 cached in DATA_DIR/eol, no built-in table), Office/Visio/Project (perpetual releases) end of support
 (detected from the software inventory; endoflife.date "office";
 Microsoft 365 Apps excluded; the UI warns when endoflife.date could not
