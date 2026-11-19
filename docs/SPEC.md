@@ -153,7 +153,11 @@ as events. Every rule can be disabled per device (Alerts tab), e.g. for a
 firewall that is off on purpose.
 
 Notifications: one mail per device and evaluation with new/still open/resolved
-alerts (HTML with a plain text alternative, inline styles, light and dark colours), reminders every N hours (default 24), optional resolve mails, per-device mute.
+alerts (HTML with a plain text alternative, inline styles, light and dark colours), reminders every N hours (default 24) for state alerts, optional resolve mails, per-device mute.
+Event alerts (bluescreens, disk error events, OOM kills, undervoltage, malware detections, new
+administrators/autostart entries/Defender exclusions) get no reminders – the events are in the
+past and the alert closes when they leave the rule's time window; events received after the last
+notification are mailed as "New events" with only the new entries.
 
 ## Areas
 

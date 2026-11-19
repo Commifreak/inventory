@@ -140,6 +140,32 @@ type finding struct {
 	Subject  string
 	Severity string
 	Message  string
+	event    *eventSpec // set for findings of event rules
+}
+
+// eventSpec describes the events behind a finding of an event rule. Such
+// alerts are not repeated as reminders – the events are in the past and the
+// alert closes when they leave the rule's time window – but events received
+// after the last notification are mailed.
+type eventSpec struct {
+	kind, label string
+	since       time.Time // start of the rule's time window
+	external    bool      // include events on external disks
+	details     bool      // list the event messages
+	total       int       // events within the window
+	hours       float64
+}
+
+// alertChanges are the alerts of a device to notify about.
+type alertChanges struct {
+	opened, resolved, renotify []store.Alert
+	// updated are open event alerts with new events; their Message lists
+	// only the events received since the last notification.
+	updated []store.Alert
+}
+
+func (c alertChanges) empty() bool {
+	return len(c.opened)+len(c.resolved)+len(c.renotify)+len(c.updated) == 0
 }
 
 func (f finding) key() string { return f.Rule + "\x00" + f.Subject }
@@ -524,7 +550,8 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 			continue
 		}
 		hours := p(rc, "hours")
-		n, err := s.store.CountEvents(ctx, d.ID, it.kind, now.Add(-time.Duration(hours*float64(time.Hour))), rc.IncludeExternal)
+		since := now.Add(-time.Duration(hours * float64(time.Hour)))
+		n, err := s.store.CountEvents(ctx, d.ID, it.kind, since, rc.IncludeExternal)
 		if err != nil {
 			continue
 		}
@@ -537,12 +564,14 @@ func (s *Server) evaluateDevice(ctx context.Context, d *store.Device, snaps map[
 		case float64(n) >= min:
 			msg := fmt.Sprintf("%d %s in the last %.0f hours.", n, it.label, hours)
 			if it.details {
-				msg += eventDetails(ctx, s.store, d.ID, it.kind, now.Add(-time.Duration(hours*float64(time.Hour))))
+				msg += eventDetails(ctx, s.store, d.ID, it.kind, since, rc.IncludeExternal)
 			}
 			if it.rule == "undervoltage" && sysOK && sys.PiPower != nil && sys.PiPower.UndervoltageNow {
 				msg += " Undervoltage is present right now."
 			}
 			ev.add(rc, it.rule, "", "%s", msg)
+			ev.findings[len(ev.findings)-1].event = &eventSpec{kind: it.kind, label: it.label, since: since,
+				external: rc.IncludeExternal, details: it.details, total: n, hours: hours}
 		case it.rule == "undervoltage" && sysOK && sys.PiPower != nil && sys.PiPower.UndervoltageNow:
 			ev.add(rc, it.rule, "", "Undervoltage is present right now (%s). Check the power supply and cable.", sys.PiPower.Source)
 		}
@@ -749,17 +778,17 @@ func (s *Server) runAlerts(ctx context.Context, only map[string]bool) {
 			continue
 		}
 		ev := s.evaluateDevice(ctx, d, snaps, as, now)
-		opened, resolved, renotify := s.reconcile(ctx, d, ev, as, now)
+		ch := s.reconcile(ctx, d, ev, as, now)
 		if d.AlertsMuted {
 			continue
 		}
-		if len(opened)+len(resolved)+len(renotify) > 0 {
-			s.notifyDevice(ctx, d, as, opened, resolved, renotify, now)
+		if !ch.empty() {
+			s.notifyDevice(ctx, d, as, ch, now)
 		}
 	}
 }
 
-func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation, as AlertSettings, now time.Time) (opened, resolved, renotify []store.Alert) {
+func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation, as AlertSettings, now time.Time) (ch alertChanges) {
 	open, err := s.store.OpenAlertsForDevice(ctx, d.ID)
 	if err != nil {
 		return
@@ -778,11 +807,20 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 				_ = s.store.TouchAlert(ctx, a.ID, f.Severity, f.Message, now)
 			}
 			a.Severity, a.Message = f.Severity, f.Message
-			if as.RenotifyHours > 0 && !a.LastNotifiedAt.IsZero() && now.Sub(a.LastNotifiedAt) > time.Duration(as.RenotifyHours)*time.Hour {
-				renotify = append(renotify, a)
-			} else if a.LastNotifiedAt.IsZero() && !d.AlertsMuted {
+			switch {
+			case a.LastNotifiedAt.IsZero():
 				// Never notified (e.g. SMTP was not configured): try again.
-				renotify = append(renotify, a)
+				if !d.AlertsMuted {
+					ch.renotify = append(ch.renotify, a)
+				}
+			case f.event != nil:
+				// Event alerts get no reminders, only their new events.
+				if msg := s.newEventsMessage(ctx, d.ID, f.event, a.LastNotifiedAt); msg != "" {
+					a.Message = msg
+					ch.updated = append(ch.updated, a)
+				}
+			case as.RenotifyHours > 0 && now.Sub(a.LastNotifiedAt) > time.Duration(as.RenotifyHours)*time.Hour:
+				ch.renotify = append(ch.renotify, a)
 			}
 			continue
 		}
@@ -791,7 +829,7 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 			s.log.Warn("insert alert", "err", err)
 			continue
 		}
-		opened = append(opened, a)
+		ch.opened = append(ch.opened, a)
 	}
 	for k, a := range existing {
 		if _, still := cur[k]; still {
@@ -803,21 +841,39 @@ func (s *Server) reconcile(ctx context.Context, d *store.Device, ev *evaluation,
 		_ = s.store.ResolveAlert(ctx, a.ID, now)
 		a.ResolvedAt = now
 		if !a.LastNotifiedAt.IsZero() {
-			resolved = append(resolved, a)
+			ch.resolved = append(ch.resolved, a)
 		}
 	}
 	return
 }
 
-func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSettings, opened, resolved, renotify []store.Alert, now time.Time) {
+// newEventsMessage describes the events of an open event alert that were
+// received after its last notification ("" = none).
+func (s *Server) newEventsMessage(ctx context.Context, deviceID string, e *eventSpec, notified time.Time) string {
+	evs, err := s.store.EventsReceivedAfter(ctx, deviceID, e.kind, e.since, notified, e.external)
+	if err != nil || len(evs) == 0 {
+		return ""
+	}
+	msg := fmt.Sprintf("Since the last notification: %d %s.", len(evs), e.label)
+	if e.details {
+		msgs := make([]string, len(evs))
+		for i, ev := range evs {
+			msgs[i] = ev.Message
+		}
+		msg += joinEventMessages(msgs)
+	}
+	return msg + fmt.Sprintf(" %d in the last %.0f hours in total.", e.total, e.hours)
+}
+
+func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSettings, ch alertChanges, now time.Time) {
 	smtp := s.smtpSettings(ctx)
 	if !smtp.Configured() {
 		return
 	}
 	// Group alerts by recipient list.
 	type batch struct {
-		to                         []string
-		opened, resolved, renotify []store.Alert
+		to []string
+		alertChanges
 	}
 	batches := map[string]*batch{}
 	// The recipients of the device's area get its alerts in addition to the
@@ -850,26 +906,31 @@ func (s *Server) notifyDevice(ctx context.Context, d *store.Device, as AlertSett
 			}
 		case "renotify":
 			b.renotify = append(b.renotify, a)
+		case "updated":
+			b.updated = append(b.updated, a)
 		}
 	}
-	for _, a := range opened {
+	for _, a := range ch.opened {
 		add(a, "opened")
 	}
-	for _, a := range resolved {
+	for _, a := range ch.resolved {
 		add(a, "resolved")
 	}
-	for _, a := range renotify {
+	for _, a := range ch.renotify {
 		add(a, "renotify")
 	}
+	for _, a := range ch.updated {
+		add(a, "updated")
+	}
 	for _, b := range batches {
-		if len(b.opened)+len(b.resolved)+len(b.renotify) == 0 {
+		if b.empty() {
 			continue
 		}
-		if err := s.mailer.Send(ctx, b.to, s.alertMail(ctx, d, b.opened, b.resolved, b.renotify)); err != nil {
+		if err := s.mailer.Send(ctx, b.to, s.alertMail(ctx, d, b.alertChanges)); err != nil {
 			s.log.Warn("sending alert mail failed", "device", d.ID, "err", err)
 			continue
 		}
-		for _, a := range append(append(b.opened, b.renotify...), b.resolved...) {
+		for _, a := range slices.Concat(b.opened, b.updated, b.renotify, b.resolved) {
 			_ = s.store.MarkAlertNotified(ctx, a.ID, now)
 		}
 	}
@@ -893,7 +954,8 @@ func mergeRecipients(lists ...[]string) []string {
 	return out
 }
 
-func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolved, renotify []store.Alert) Mail {
+func (s *Server) alertMail(ctx context.Context, d *store.Device, ch alertChanges) Mail {
+	opened, resolved, renotify, updated := ch.opened, ch.resolved, ch.renotify, ch.updated
 	g := s.generalSettings(ctx)
 	title := func(a store.Alert) string {
 		if def := ruleDef(a.Rule); def != nil {
@@ -901,13 +963,13 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolve
 		}
 		return a.Rule
 	}
+	active := slices.Concat(opened, updated, renotify)
 	sev := SevWarning
-	for _, a := range append(opened, renotify...) {
+	for _, a := range active {
 		if a.Severity == SevCritical {
 			sev = SevCritical
 		}
 	}
-	active := append(append([]store.Alert{}, opened...), renotify...)
 	var subj, heading string
 	switch {
 	case len(active) > 0:
@@ -916,10 +978,15 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolve
 			subj += fmt.Sprintf(" (+%d more)", n-1)
 		}
 		switch {
-		case len(opened) == 1 && len(renotify) == 0:
+		case len(opened) == 1 && len(renotify)+len(updated) == 0:
 			heading = "New alert"
 		case len(opened) > 0:
 			heading = fmt.Sprintf("%d new alerts", len(opened))
+		case len(updated) > 0:
+			heading = "New events"
+			if len(updated) > 1 {
+				heading = fmt.Sprintf("New events for %d alerts", len(updated))
+			}
 		default:
 			heading = fmt.Sprintf("%d alert(s) still open", len(renotify))
 		}
@@ -985,6 +1052,7 @@ func (s *Server) alertMail(ctx context.Context, d *store.Device, opened, resolve
 		md.Sections = append(md.Sections, ms)
 	}
 	section("New alerts", opened, false)
+	section("New events", updated, false)
 	section("Still open", renotify, false)
 	section("Resolved", resolved, true)
 	if md.URL != "" {
@@ -1020,22 +1088,25 @@ func humanBytes(b uint64) string {
 }
 
 // eventDetails lists up to three event messages of a kind since t.
-func eventDetails(ctx context.Context, st *store.Store, deviceID, kind string, since time.Time) string {
+func eventDetails(ctx context.Context, st *store.Store, deviceID, kind string, since time.Time, includeExternal bool) string {
 	evs, err := st.Events(ctx, deviceID, since, 500)
 	if err != nil {
 		return ""
 	}
 	var msgs []string
-	more := 0
 	for _, e := range evs {
-		if e.Kind != kind {
-			continue
+		if e.Kind == kind && (includeExternal || !e.External) {
+			msgs = append(msgs, e.Message)
 		}
-		if len(msgs) == 3 {
-			more++
-			continue
-		}
-		msgs = append(msgs, e.Message)
+	}
+	return joinEventMessages(msgs)
+}
+
+// joinEventMessages lists up to three event messages.
+func joinEventMessages(msgs []string) string {
+	more := 0
+	if len(msgs) > 3 {
+		msgs, more = msgs[:3], len(msgs)-3
 	}
 	out := ""
 	if len(msgs) > 0 {

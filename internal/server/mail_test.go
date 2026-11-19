@@ -21,7 +21,7 @@ func TestAlertMail(t *testing.T) {
 	d := &store.Device{ID: "dev1", Hostname: "PC-01", OSName: "Windows 11 Pro", LastSeenAt: time.Now()}
 	opened := []store.Alert{{Rule: "firewall_off", Severity: SevWarning, Message: "Firewall is off: <Public>.", OpenedAt: time.Now()}}
 	resolved := []store.Alert{{Rule: "disk_space", Severity: SevCritical, Message: "Volume C: only 2% free.", OpenedAt: time.Now().Add(-time.Hour)}}
-	m := s.alertMail(ctx, d, opened, resolved, nil)
+	m := s.alertMail(ctx, d, alertChanges{opened: opened, resolved: resolved})
 	if !strings.Contains(m.Subject, "WARNING: PC-01: Firewall disabled") {
 		t.Errorf("subject: %s", m.Subject)
 	}
