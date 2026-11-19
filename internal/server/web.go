@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io/fs"
 	"math"
+	"net"
 	"net/http"
 	"slices"
 	"sort"
@@ -117,6 +118,7 @@ func newWebUI(s *Server) (*webUI, error) {
 			return id
 		},
 		"sparkline": sparkline,
+		"splitIPs":  splitIPs,
 		"dict":      dict,
 		"seq": func(n int) []int {
 			s := make([]int, n)
@@ -330,6 +332,54 @@ func dict(kv ...any) map[string]any {
 		m[k] = kv[i+1]
 	}
 	return m
+}
+
+// ipList is the address list of a network adapter for display.
+type ipList struct {
+	Main []string // IPv4, then the most relevant IPv6 addresses
+	More []string // further IPv6 addresses (temporary, DHCPv6, link-local), collapsed
+}
+
+// splitIPs orders addresses (IPv4, global IPv6 /64, other global, ULA,
+// link-local) and keeps at most two IPv6 addresses visible.
+func splitIPs(ips []string) ipList {
+	rank := func(s string) int {
+		addr, bits, _ := strings.Cut(s, "/")
+		ip := net.ParseIP(addr)
+		switch {
+		case ip == nil:
+			return 9
+		case ip.To4() != nil:
+			return 0
+		case ip.IsLinkLocalUnicast():
+			return 4
+		case len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc: // unique local
+			return 3
+		case bits == "64":
+			return 1
+		}
+		return 2
+	}
+	sorted := slices.Clone(ips)
+	slices.SortStableFunc(sorted, func(a, b string) int { return rank(a) - rank(b) })
+	var l ipList
+	v6 := 0
+	for _, ip := range sorted {
+		if rank(ip) == 0 {
+			l.Main = append(l.Main, ip)
+			continue
+		}
+		if v6 < 2 {
+			l.Main = append(l.Main, ip)
+			v6++
+			continue
+		}
+		l.More = append(l.More, ip)
+	}
+	if len(l.More) == 1 { // "+1 more" is not worth a click
+		l.Main, l.More = append(l.Main, l.More...), nil
+	}
+	return l
 }
 
 // sparkline renders a small inline SVG polyline for a series.

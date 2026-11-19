@@ -68,3 +68,13 @@ func TestAlertMail(t *testing.T) {
 		t.Errorf("plain mail: %s", msg.Header.Get("Content-Type"))
 	}
 }
+
+func TestSplitIPs(t *testing.T) {
+	l := splitIPs([]string{"fe80::1/64", "2003:f1::d9c0/128", "2003:f1::a/128", "192.168.5.2/24", "fdbc::1/64", "2003:f1::5dcb/64", "2003:f1:1::9c07/64", "2003:f1::b/128"})
+	if strings.Join(l.Main, ",") != "192.168.5.2/24,2003:f1::5dcb/64,2003:f1:1::9c07/64" || len(l.More) != 5 || l.More[len(l.More)-1] != "fe80::1/64" {
+		t.Errorf("main %v more %v", l.Main, l.More)
+	}
+	if l := splitIPs([]string{"10.0.0.2/24", "2001:db8::1/64", "2001:db8::2/64", "fe80::1/64"}); len(l.More) != 0 || len(l.Main) != 4 {
+		t.Errorf("single extra address collapsed: %+v", l)
+	}
+}

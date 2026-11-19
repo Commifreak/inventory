@@ -161,7 +161,7 @@
   </dl>
   <div class="tablewrap"><table class="compact"><thead><tr><th>Adapter</th><th>Addresses</th><th>MAC</th></tr></thead><tbody>
   {{range .Network}}<tr class="{{if not .Up}}dim{{end}}"><td>{{.Name}}{{if .Wireless}} 📶{{end}}<div class="sub">{{.Description}}</div></td>
-    <td class="mono small">{{range $i, $ip := .IPs}}{{if $i}}<br>{{end}}{{$ip}}{{end}}{{if isSet .DHCP}}<div class="sub">{{if derefB .DHCP}}DHCP{{else}}static{{end}}</div>{{end}}</td><td class="mono small">{{.MAC}}</td></tr>{{end}}
+    <td class="mono small">{{$ips := splitIPs .IPs}}{{range $i, $ip := $ips.Main}}{{if $i}}<br>{{end}}{{$ip}}{{end}}{{if $ips.More}}<details class="ips"><summary>+{{len $ips.More}} more</summary>{{range $ips.More}}{{.}}<br>{{end}}</details>{{end}}{{if isSet .DHCP}}<div class="sub">{{if derefB .DHCP}}DHCP{{else}}static{{end}}</div>{{end}}</td><td class="mono small">{{.MAC}}</td></tr>{{end}}
   </tbody></table></div>
 </section>
 <div class="grid">
