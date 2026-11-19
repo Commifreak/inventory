@@ -34,6 +34,8 @@ func (w *webUI) routes(mux *http.ServeMux) {
 		mux.HandleFunc("GET /auth/oidc/callback", s.oidc.handleCallback)
 	}
 	mux.HandleFunc("POST /impersonate/stop", s.requireUser(w.handleImpersonateStop))
+	mux.HandleFunc("GET /changelog", s.requireUser(w.handleChangelogPage))
+	mux.HandleFunc("POST /changelog/seen", s.requireUser(w.handleChangelogSeen))
 	mux.HandleFunc("GET /account/password", s.requireUser(w.handlePasswordPage))
 	mux.HandleFunc("POST /account/password", s.requireUser(w.handlePasswordChange))
 

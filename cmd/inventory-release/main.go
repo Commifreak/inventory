@@ -4,6 +4,7 @@
 //	inventory-release manifest -dir dist/agents/1.2.3 -version 1.2.3 [-key key.pem]
 //	inventory-release keygen -out release-signing        (writes .key and .pub)
 //	inventory-release verify -dir dist/agents/1.2.3 [-pub key.pub]
+//	inventory-release changelog -version 1.2.4-edge.X -out internal/server/changelog.json
 //
 // The private key is read from -key, RELEASE_SIGNING_KEY_FILE or
 // RELEASE_SIGNING_KEY (PEM content). Without a key the manifest is written
@@ -29,7 +30,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: inventory-release manifest|keygen|verify [flags]")
+		fmt.Fprintln(os.Stderr, "usage: inventory-release manifest|keygen|verify|changelog [flags]")
 		os.Exit(2)
 	}
 	var err error
@@ -40,6 +41,8 @@ func main() {
 		err = keygen(os.Args[2:])
 	case "verify":
 		err = verify(os.Args[2:])
+	case "changelog":
+		err = changelog(os.Args[2:])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}

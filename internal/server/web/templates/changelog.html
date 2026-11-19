@@ -1,0 +1,7 @@
+{{define "content"}}{{$d := .Data}}
+<div class="pagehead"><h1>What's new</h1></div>
+<section class="card">
+  {{if $d.Changelog.Releases}}{{template "changelist" $d.Changelog.Releases}}
+  {{else}}<p class="muted">No changelog is bundled with this build.</p>{{end}}
+</section>
+{{end}}

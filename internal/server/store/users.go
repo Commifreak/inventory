@@ -24,16 +24,17 @@ type User struct {
 	CreatedAt          time.Time
 	LastLoginAt        time.Time
 	Superadmin         bool
+	ChangelogSeenAt    time.Time // "What's new" dismissed; zero = never
 }
 
-const userCols = `id, username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, last_login_at, superadmin`
+const userCols = `id, username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, last_login_at, superadmin, changelog_seen_at`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var pw, sub, email sql.NullString
 	var created int64
-	var last sql.NullInt64
-	if err := row.Scan(&u.ID, &u.Username, &pw, &sub, &email, &u.MustChangePassword, &u.Disabled, &created, &last, &u.Superadmin); err != nil {
+	var last, seen sql.NullInt64
+	if err := row.Scan(&u.ID, &u.Username, &pw, &sub, &email, &u.MustChangePassword, &u.Disabled, &created, &last, &u.Superadmin, &seen); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -42,6 +43,7 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	u.PasswordHash, u.OIDCSubject, u.Email = pw.String, sub.String, email.String
 	u.CreatedAt = time.Unix(created, 0)
 	u.LastLoginAt = tu(last)
+	u.ChangelogSeenAt = tu(seen)
 	return &u, nil
 }
 
@@ -81,8 +83,10 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 }
 
 func (s *Store) CreateUser(ctx context.Context, u *User) error {
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO users(username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, superadmin) VALUES(?,?,?,?,?,?,?,?)`,
-		u.Username, nullStr(u.PasswordHash), nullStr(u.OIDCSubject), nullStr(u.Email), u.MustChangePassword, u.Disabled, time.Now().Unix(), u.Superadmin)
+	// New users start with the current changes seen.
+	now := time.Now().Unix()
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO users(username, password_hash, oidc_subject, email, must_change_password, disabled, created_at, superadmin, changelog_seen_at) VALUES(?,?,?,?,?,?,?,?,?)`,
+		u.Username, nullStr(u.PasswordHash), nullStr(u.OIDCSubject), nullStr(u.Email), u.MustChangePassword, u.Disabled, now, u.Superadmin, now)
 	if err != nil {
 		return err
 	}
@@ -97,6 +101,11 @@ func (s *Store) SetPassword(ctx context.Context, id int64, hash string, mustChan
 
 func (s *Store) SetUserDisabled(ctx context.Context, id int64, disabled bool) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE users SET disabled=? WHERE id=?`, disabled, id)
+	return err
+}
+
+func (s *Store) SetChangelogSeen(ctx context.Context, id int64, at time.Time) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE users SET changelog_seen_at=? WHERE id=?`, at.Unix(), id)
 	return err
 }
 

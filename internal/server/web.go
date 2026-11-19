@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/commifreak/inventory/internal/protocol"
+	"github.com/commifreak/inventory/internal/release"
 	"github.com/commifreak/inventory/internal/server/store"
 )
 
@@ -119,7 +120,13 @@ func newWebUI(s *Server) (*webUI, error) {
 		},
 		"sparkline": sparkline,
 		"splitIPs":  splitIPs,
-		"dict":      dict,
+		"prURL": func(n int) string {
+			if s.changelog.Repo == "" || n == 0 {
+				return ""
+			}
+			return fmt.Sprintf("https://github.com/%s/pull/%d", s.changelog.Repo, n)
+		},
+		"dict": dict,
 		"seq": func(n int) []int {
 			s := make([]int, n)
 			for i := range s {
@@ -193,7 +200,10 @@ type page struct {
 	MultiArea bool
 	// Impersonator: superadmin signed in as User (support session banner).
 	Impersonator *store.User
-	Data         any
+	// WhatsNew: changes since the user last dismissed the notice.
+	WhatsNew []release.ChangelogRelease
+	Path     string
+	Data     any
 }
 
 func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p page) {
@@ -211,6 +221,10 @@ func (w *webUI) render(rw http.ResponseWriter, r *http.Request, name string, p p
 	p.Version = w.s.cfg.Version
 	p.Instance = w.s.generalSettings(r.Context()).InstanceName
 	p.Impersonator = impersonatorFrom(r.Context())
+	p.Path = r.URL.RequestURI()
+	if p.User != nil && p.Impersonator == nil && name != "changelog" {
+		p.WhatsNew = unseenChanges(w.s.changelog, p.User.ChangelogSeenAt)
+	}
 	if acc := accessFrom(r.Context()); acc != nil {
 		p.Super = acc.Super
 		p.Areas = w.s.visibleAreas(r.Context())

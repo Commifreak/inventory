@@ -32,10 +32,19 @@
 {{end}}
 <main class="{{if not .User}}narrow{{end}}">
   {{range .Warnings}}<div class="flash warn">{{.}}</div>{{end}}
+  {{if .WhatsNew}}
+  <section class="whatsnew">
+    <details>
+      <summary><b>What's new in Inventory {{.Version}}</b> <span class="muted">– {{template "changecount" .WhatsNew}}</span></summary>
+      {{template "changelist" .WhatsNew}}
+    </details>
+    <form method="post" action="/changelog/seen" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="next" value="{{.Path}}"><button class="small">Got it</button></form>
+  </section>
+  {{end}}
   {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}
   {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
   {{template "content" .}}
 </main>
-<footer class="muted">Inventory {{.Version}}</footer>
+<footer class="muted">Inventory {{.Version}}{{if .User}} · <a href="/changelog">What's new</a>{{end}}</footer>
 </body>
 </html>{{end}}
