@@ -269,12 +269,6 @@ func (w *webUI) handleDashboard(rw http.ResponseWriter, r *http.Request) {
 // device detail
 // ---------------------------------------------------------------------------
 
-type diskView struct {
-	protocol.Disk
-	Status string
-	Trends map[string][]float64
-}
-
 func (w *webUI) loadDevice(rw http.ResponseWriter, r *http.Request) *store.Device {
 	d, err := w.s.store.DeviceByID(r.Context(), r.PathValue("id"))
 	// Devices of other areas do not exist for the user (no 403: no hint).
@@ -318,17 +312,11 @@ func (w *webUI) handleDevice(rw http.ResponseWriter, r *http.Request) {
 		if smart, ok := decodeSnap[protocol.SmartData](snaps, protocol.CollectSMART); ok {
 			var disks []diskView
 			for _, dk := range smart.Disks {
-				dv := diskView{Disk: dk, Status: DiskStatus(dk), Trends: map[string][]float64{}}
+				var hist []store.SmartPoint
 				if dk.Serial != "" {
-					hist, _ := s.store.SmartHistory(ctx, d.ID, dk.Serial, now.AddDate(0, 0, -90))
-					for _, p := range hist {
-						addTrend(dv.Trends, "Temperature", p.Temperature)
-						addTrend(dv.Trends, "Reallocated", p.Reallocated)
-						addTrend(dv.Trends, "Pending", p.Pending)
-						addTrend(dv.Trends, "Percent used", p.PercentUsed)
-						addTrend(dv.Trends, "Media errors", p.MediaErrors)
-					}
+					hist, _ = s.store.SmartHistory(ctx, d.ID, dk.Serial, now.AddDate(0, 0, -90))
 				}
+				dv := newDiskView(dk, alerts, hist)
 				disks = append(disks, dv)
 			}
 			sort.SliceStable(disks, func(i, j int) bool { return disks[i].System && !disks[j].System })
@@ -433,12 +421,6 @@ func safeFile(s string) string {
 		}
 		return '_'
 	}, s)
-}
-
-func addTrend(m map[string][]float64, key string, v *int64) {
-	if v != nil {
-		m[key] = append(m[key], float64(*v))
-	}
 }
 
 // handleDeviceRules saves the alert rules disabled for a device.

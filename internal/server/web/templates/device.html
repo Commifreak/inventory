@@ -201,6 +201,9 @@
 {{end}}
 {{end}}
 
+{{define "issueattr"}}{{with .}} class="kv-{{.Severity}}" title="{{.Reason}}"{{end}}{{end}}
+{{define "issuenote"}}{{with .}}<small class="kv-note">{{.Reason}}</small>{{end}}{{end}}
+
 {{/* ================================================================== */}}
 {{define "tab_disks"}}{{$d := .Data}}
 {{template "sectionmeta" index $d.Snaps "smart"}}
@@ -212,27 +215,30 @@
     <span class="sub mono">{{.Device}}{{if .Volumes}} ({{join .Volumes ", "}}){{end}}{{if .Serial}} · S/N {{.Serial}}{{end}}{{if .Firmware}} · FW {{.Firmware}}{{end}}</span>
   </div>
   <div class="kv">
-    <div><span>Health</span><b>{{if isSet .HealthPassed}}{{if derefB .HealthPassed}}PASSED{{else}}<span class="err-text">FAILED</span>{{end}}{{else}}unknown{{end}}</b></div>
+    <div{{template "issueattr" (.Issue "health")}}><span>Health</span><b>{{if isSet .HealthPassed}}{{if derefB .HealthPassed}}PASSED{{else}}<span class="err-text">FAILED</span>{{end}}{{else}}unknown{{end}}</b>{{template "issuenote" (.Issue "health")}}</div>
     <div><span>Type</span><b>{{.Protocol}} {{.MediaType}}{{if .Bus}} · {{.Bus}}{{end}}</b></div>
     {{if .SizeBytes}}<div><span>Capacity</span><b>{{bytes .SizeBytes}}</b></div>{{end}}
-    {{if .Temperature}}<div><span>Temperature</span><b>{{deref .Temperature}} °C</b></div>{{end}}
+    {{if .Temperature}}<div{{template "issueattr" (.Issue "temperature")}}><span>Temperature</span><b>{{deref .Temperature}} °C</b>{{template "issuenote" (.Issue "temperature")}}</div>{{end}}
     {{if .PowerOnHours}}<div><span>Power on</span><b>{{deref .PowerOnHours}} h</b></div>{{end}}
     {{if .PowerCycles}}<div><span>Power cycles</span><b>{{deref .PowerCycles}}</b></div>{{end}}
-    {{if .Reallocated}}<div><span>Reallocated</span><b>{{deref .Reallocated}}</b></div>{{end}}
-    {{if .Pending}}<div><span>Pending</span><b>{{deref .Pending}}</b></div>{{end}}
-    {{if .Uncorrectable}}<div><span>Uncorrectable</span><b>{{deref .Uncorrectable}}</b></div>{{end}}
-    {{if .CRCErrors}}<div><span>CRC errors</span><b>{{deref .CRCErrors}}</b></div>{{end}}
-    {{if .ReportedUncorrect}}<div><span>Reported uncorrectable</span><b>{{deref .ReportedUncorrect}}</b></div>{{end}}
-    {{if .CommandTimeout}}<div><span>Command timeouts</span><b>{{deref .CommandTimeout}}</b></div>{{end}}
-    {{if .SpinRetry}}<div><span>Spin retries</span><b>{{deref .SpinRetry}}</b></div>{{end}}
-    {{if .PercentUsed}}<div><span>Wear (used)</span><b>{{deref .PercentUsed}} %</b></div>{{end}}
-    {{if .AvailableSpare}}<div><span>Available spare</span><b>{{deref .AvailableSpare}} %{{if .SpareThreshold}} <small class="muted">(min {{deref .SpareThreshold}} %)</small>{{end}}</b></div>{{end}}
-    {{if .MediaErrors}}<div><span>Media errors</span><b>{{deref .MediaErrors}}</b></div>{{end}}
-    {{if .CriticalWarning}}<div><span>Critical warning</span><b>{{deref .CriticalWarning}}</b></div>{{end}}
-    {{if .UnsafeShutdowns}}<div><span>Unsafe shutdowns</span><b>{{deref .UnsafeShutdowns}}</b></div>{{end}}
+    {{if .Reallocated}}<div{{template "issueattr" (.Issue "reallocated")}}><span>Reallocated</span><b>{{deref .Reallocated}}</b>{{template "issuenote" (.Issue "reallocated")}}</div>{{end}}
+    {{if .Pending}}<div{{template "issueattr" (.Issue "pending")}}><span>Pending</span><b>{{deref .Pending}}</b>{{template "issuenote" (.Issue "pending")}}</div>{{end}}
+    {{if .Uncorrectable}}<div{{template "issueattr" (.Issue "uncorrectable")}}><span>Uncorrectable</span><b>{{deref .Uncorrectable}}</b>{{template "issuenote" (.Issue "uncorrectable")}}</div>{{end}}
+    {{if .CRCErrors}}<div{{template "issueattr" (.Issue "crc")}}><span>CRC errors</span><b>{{deref .CRCErrors}}</b>{{template "issuenote" (.Issue "crc")}}</div>{{end}}
+    {{if .ReportedUncorrect}}<div{{template "issueattr" (.Issue "reported")}}><span>Reported uncorrectable</span><b>{{deref .ReportedUncorrect}}</b>{{template "issuenote" (.Issue "reported")}}</div>{{end}}
+    {{if .CommandTimeout}}<div{{template "issueattr" (.Issue "timeouts")}}><span>Command timeouts</span><b>{{deref .CommandTimeout}}</b>{{template "issuenote" (.Issue "timeouts")}}</div>{{end}}
+    {{if .SpinRetry}}<div{{template "issueattr" (.Issue "spin")}}><span>Spin retries</span><b>{{deref .SpinRetry}}</b>{{template "issuenote" (.Issue "spin")}}</div>{{end}}
+    {{if .PercentUsed}}<div{{template "issueattr" (.Issue "wear")}}><span>Wear (used)</span><b>{{deref .PercentUsed}} %</b>{{template "issuenote" (.Issue "wear")}}</div>{{end}}
+    {{if .AvailableSpare}}<div{{template "issueattr" (.Issue "spare")}}><span>Available spare</span><b>{{deref .AvailableSpare}} %{{if .SpareThreshold}} <small class="muted">(min {{deref .SpareThreshold}} %)</small>{{end}}</b>{{template "issuenote" (.Issue "spare")}}</div>{{end}}
+    {{if .MediaErrors}}<div{{template "issueattr" (.Issue "media")}}><span>Media errors</span><b>{{deref .MediaErrors}}</b>{{template "issuenote" (.Issue "media")}}</div>{{end}}
+    {{if .CriticalWarning}}<div{{template "issueattr" (.Issue "critical")}}><span>Critical warning</span><b>{{deref .CriticalWarning}}</b>{{template "issuenote" (.Issue "critical")}}</div>{{end}}
+    {{if .UnsafeShutdowns}}<div{{template "issueattr" (.Issue "unsafe")}}><span>Unsafe shutdowns</span><b>{{deref .UnsafeShutdowns}}</b>{{template "issuenote" (.Issue "unsafe")}}</div>{{end}}
     {{if .DataWrittenTB}}<div><span>Data written</span><b>{{deref .DataWrittenTB}} TB</b></div>{{end}}
   </div>
-  {{if .Trends}}<div class="trends">{{range $k, $v := .Trends}}{{if gt (len $v) 1}}<div><span class="sub">{{$k}} (90 days)</span>{{sparkline $v}}</div>{{end}}{{end}}</div>{{end}}
+  {{if .Trends}}<div class="trends">{{range .Trends}}<figure class="trend">
+    <figcaption><span>{{.Name}}</span> <b>{{.Last}}</b> <small class="muted">{{.Summary}}</small></figcaption>
+    {{trendChart .}}</figure>{{end}}</div>{{end}}
+  {{if .Unchanged}}<p class="hint">Unchanged in the history (up to 90 days): {{join .Unchanged ", "}}.</p>{{end}}
   {{range .Messages}}<p class="warn-text small">{{.}}</p>{{end}}
   {{if or (eq .Protocol "SD") (eq .Bus "eMMC")}}<p class="hint">{{if eq .Protocol "SD"}}SD cards provide no SMART data.{{else}}eMMC reports only wear estimates.{{end}} Read/write errors are taken from the kernel log, see the Events tab.</p>{{end}}
   {{if .Attributes}}
