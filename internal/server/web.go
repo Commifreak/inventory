@@ -118,8 +118,8 @@ func newWebUI(s *Server) (*webUI, error) {
 			}
 			return id
 		},
-		"sparkline": sparkline,
-		"splitIPs":  splitIPs,
+		"trendChart": trendChart,
+		"splitIPs":   splitIPs,
 		"prURL": func(n int) string {
 			if s.changelog.Repo == "" || n == 0 {
 				return ""
@@ -396,29 +396,6 @@ func splitIPs(ips []string) ipList {
 	return l
 }
 
-// sparkline renders a small inline SVG polyline for a series.
-func sparkline(vals []float64) template.HTML {
-	if len(vals) < 2 {
-		return ""
-	}
-	min, max := vals[0], vals[0]
-	for _, v := range vals {
-		min = math.Min(min, v)
-		max = math.Max(max, v)
-	}
-	if max == min {
-		max = min + 1
-	}
-	const w, h = 160.0, 32.0
-	var pts []string
-	for i, v := range vals {
-		x := float64(i) / float64(len(vals)-1) * w
-		y := h - 2 - (v-min)/(max-min)*(h-4)
-		pts = append(pts, fmt.Sprintf("%.1f,%.1f", x, y))
-	}
-	return template.HTML(fmt.Sprintf(`<svg class="spark" viewBox="0 0 %.0f %.0f" preserveAspectRatio="none" aria-hidden="true"><polyline points="%s"/></svg>`, w, h, strings.Join(pts, " ")))
-}
-
 // ---------------------------------------------------------------------------
 // status computation shared by list and detail views
 // ---------------------------------------------------------------------------
@@ -437,27 +414,6 @@ func worse(a, b string) string {
 		return b
 	}
 	return a
-}
-
-// DiskStatus classifies a disk.
-func DiskStatus(d protocol.Disk) string {
-	if d.HealthPassed != nil && !*d.HealthPassed {
-		return stCritical
-	}
-	if d.CriticalWarning != nil && *d.CriticalWarning != 0 {
-		return stCritical
-	}
-	gt0 := func(p *int64) bool { return p != nil && *p > 0 }
-	if gt0(d.Reallocated) || gt0(d.Pending) || gt0(d.Uncorrectable) || gt0(d.MediaErrors) {
-		return stWarning
-	}
-	if d.PercentUsed != nil && *d.PercentUsed >= 90 {
-		return stWarning
-	}
-	if d.HealthPassed != nil {
-		return stOK
-	}
-	return stUnknown
 }
 
 // addonSelfUpdate returns the version of a pending update of the Inventory

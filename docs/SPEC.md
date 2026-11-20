@@ -96,7 +96,10 @@ software 12 h, autostart 12 h, events 4 h.
   servicing status; TPM; activation; BitLocker/LUKS/FileVault; battery health.
 - **SMART:** smartctl (embedded on Windows, system package on Linux, Homebrew on
   macOS), fallback to the Windows storage API; system disk flagged; external
-  (USB) disks shown but excluded from alerts.
+  (USB) disks shown but excluded from alerts. Disks tab: values that make a disk
+  "warning"/"critical" (its own SMART data or an open alert of the disk) are coloured with a
+  short reason; charts of the SMART history (up to 90 days) with value axis, dates and a
+  tooltip per day – only for values that changed, the others are listed as unchanged.
 - **Memory, slots, storage controllers:** memory slots and modules (SMBIOS type
   16/17 – Windows `GetSystemFirmwareTable`, Linux `/sys/firmware/dmi/tables/DMI`;
   macOS `system_profiler`), expansion slots per firmware (SMBIOS type 9, incl.

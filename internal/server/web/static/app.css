@@ -148,10 +148,24 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); fon
 .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; margin-bottom: .75rem; }
 .kv div { background: var(--surface-2); border-radius: 6px; padding: .4rem .6rem; }
 .kv span { display: block; font-size: .75rem; color: var(--muted); }
-.trends { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: .5rem; }
-.trends div { display: flex; flex-direction: column; }
-svg.spark { width: 160px; height: 32px; }
-svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.kv div.kv-warning { background: var(--warn-bg); box-shadow: inset 3px 0 0 var(--warn); }
+.kv div.kv-critical { background: var(--crit-bg); box-shadow: inset 3px 0 0 var(--crit); }
+.kv div.kv-warning b, .kv div.kv-warning .kv-note { color: var(--warn); }
+.kv div.kv-critical b, .kv div.kv-critical .kv-note { color: var(--crit); }
+.kv-note { display: block; font-size: .72rem; line-height: 1.25; margin-top: .15rem; }
+.trends { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .75rem 1.25rem; margin: .25rem 0 .75rem; }
+figure.trend { margin: 0; }
+figure.trend figcaption { font-size: .8rem; color: var(--muted); }
+figure.trend figcaption b { color: var(--text); font-size: .9rem; }
+svg.chart { display: block; width: 100%; max-width: 360px; height: auto; overflow: visible; }
+svg.chart text { font-size: 10px; fill: var(--muted); font-family: inherit; }
+svg.chart text.ylab { text-anchor: end; }
+svg.chart text.xlab.end { text-anchor: end; }
+svg.chart line.grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 3; }
+svg.chart polyline { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
+svg.chart circle { fill: transparent; stroke: transparent; stroke-width: 8; }
+svg.chart circle.last, svg.chart circle:hover { fill: var(--accent); }
+svg.chart circle:hover { r: 4; }
 details summary { cursor: pointer; color: var(--accent); margin: .25rem 0; }
 meter { width: 70%; height: .8rem; vertical-align: middle; }
 
