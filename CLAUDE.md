@@ -82,6 +82,9 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   passed via `secret-envs` (the `secrets` input of build-push-action breaks multi-line PEM);
   the build arg `REQUIRE_SIGNATURE=1` makes the image build fail if the key does not arrive.
 - After an agent version change all collectors run once immediately (`resetOnVersionChange`).
+- Windows SMART: disks smartctl cannot read (no model/serial/health, e.g. NVMe behind Intel
+  RST/VMD) are filled from the storage API (`fillFromStorageAPI` in `storage_api.go`, testable
+  on Linux) with a note in the disk's messages.
 - Hardware quirks are handled by data, not names: Windows storage controller types come from
   the PCI class code (`CC_0106…`), vendors from the PCI vendor ID; M.2 slots are also
   recognised by designation (HP reports them as PCIe slot types).
