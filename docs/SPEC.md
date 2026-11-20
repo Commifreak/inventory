@@ -95,7 +95,8 @@ software 12 h, autostart 12 h, events 4 h.
   Microsoft UEFI CA 2023, Option ROM CA 2023, KEK 2K CA 2023) and Windows
   servicing status; TPM; activation; BitLocker/LUKS/FileVault; battery health.
 - **SMART:** smartctl (embedded on Windows, system package on Linux, Homebrew on
-  macOS), fallback to the Windows storage API; system disk flagged; external
+  macOS), fallback to the Windows storage API – also per disk when smartctl cannot read
+  it (NVMe behind Intel RST/VMD, driver `iaStorVD`, passes no NVMe commands through); system disk flagged; external
   (USB) disks shown but excluded from alerts. Disks tab: values that make a disk
   "warning"/"critical" (its own SMART data or an open alert of the disk) are coloured with a
   short reason; charts of the SMART history (up to 90 days) with value axis, dates and a

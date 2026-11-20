@@ -47,26 +47,6 @@ func smartctlPath() string {
 	return ""
 }
 
-type msftPhysicalDisk struct {
-	DeviceId        string
-	FriendlyName    string
-	SerialNumber    string
-	MediaType       uint16
-	BusType         uint16
-	Size            uint64
-	HealthStatus    uint16
-	FirmwareVersion string
-}
-
-type msftReliability struct {
-	DeviceId              string
-	Temperature           uint8
-	Wear                  uint8
-	ReadErrorsUncorrected uint64
-	PowerOnHours          uint32
-	StartStopCycleCount   uint32
-}
-
 type msftPartition struct {
 	DiskNumber  uint32
 	DriveLetter uint16
@@ -102,8 +82,6 @@ func systemDiskNumber() (int, bool) {
 	return int(parts[0].DiskNumber), true
 }
 
-var busNames = map[uint16]string{1: "SCSI", 3: "ATA", 7: "USB", 8: "RAID", 10: "SAS", 11: "SATA", 12: "SD", 13: "MMC", 15: "File", 16: "Storage Spaces", 17: "NVMe"}
-
 func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 	var warns []string
 	var pdisks []msftPhysicalDisk
@@ -119,6 +97,7 @@ func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 	sysDisk, sysKnown := systemDiskNumber()
 	letters := driveLettersByDisk()
 
+	var relBy map[string]msftReliability // queried when needed
 	if bin := smartctlPath(); bin != "" {
 		disks, version, w, err := SmartctlDisks(ctx, bin)
 		warns = append(warns, w...)
@@ -143,6 +122,20 @@ func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 					// show the Windows disk number as in Disk Management.
 					d.Device = fmt.Sprintf("Disk %d", num)
 					d.Volumes = letters[num]
+					// smartctl could not read the disk (e.g. NVMe behind Intel
+					// RST/VMD, whose driver passes no NVMe commands through):
+					// take what the Windows storage API knows.
+					if p, found := byNumber[num]; found && smartctlFailed(*d) {
+						if relBy == nil {
+							relBy = reliabilityCounters()
+						}
+						var r *msftReliability
+						if x, ok := relBy[p.DeviceId]; ok {
+							r = &x
+						}
+						fillFromStorageAPI(d, p, r)
+						d.Messages = append(d.Messages, storageAPINote)
+					}
 				}
 			}
 			return protocol.SmartData{Source: version, Disks: disks}, warns, nil
@@ -153,55 +146,32 @@ func collectSmartWindows(ctx context.Context, _ *State) (any, []string, error) {
 	}
 
 	// Fallback: Windows storage reliability counters (less detail).
-	var rel []msftReliability
-	_ = wmi.QueryNamespace("SELECT DeviceId, Temperature, Wear, ReadErrorsUncorrected, PowerOnHours, StartStopCycleCount FROM MSFT_StorageReliabilityCounter", &rel, storageNS)
-	relBy := map[string]msftReliability{}
-	for _, r := range rel {
-		relBy[r.DeviceId] = r
-	}
+	relBy = reliabilityCounters()
 	var disks []protocol.Disk
 	for n, p := range byNumber {
-		d := protocol.Disk{Device: fmt.Sprintf("Disk %d", n), Volumes: letters[n], Model: strings.TrimSpace(p.FriendlyName), Serial: strings.TrimSpace(p.SerialNumber),
-			Firmware: p.FirmwareVersion, SizeBytes: p.Size, Bus: busNames[p.BusType], System: sysKnown && n == sysDisk, External: p.BusType == 7}
-		switch p.MediaType {
-		case 3:
-			d.MediaType = "HDD"
-		case 4:
-			d.MediaType = "SSD"
+		d := protocol.Disk{Device: fmt.Sprintf("Disk %d", n), Volumes: letters[n], System: sysKnown && n == sysDisk}
+		var r *msftReliability
+		if x, ok := relBy[p.DeviceId]; ok {
+			r = &x
 		}
-		if p.BusType == 17 {
-			d.Protocol = "NVMe"
-		}
-		switch p.HealthStatus {
-		case 0:
-			d.HealthPassed = boolPtr(true)
-		case 2:
-			d.HealthPassed = boolPtr(false)
-		}
-		if r, ok := relBy[p.DeviceId]; ok {
-			if r.Temperature > 0 {
-				t := int(r.Temperature)
-				d.Temperature = &t
-			}
-			if d.Protocol == "NVMe" || r.Wear > 0 {
-				w := int(r.Wear)
-				d.PercentUsed = &w
-			}
-			poh, unc, cyc := int64(r.PowerOnHours), int64(r.ReadErrorsUncorrected), int64(r.StartStopCycleCount)
-			if poh > 0 {
-				d.PowerOnHours = &poh
-			}
-			d.Uncorrectable = &unc
-			if cyc > 0 {
-				d.PowerCycles = &cyc
-			}
-		}
+		fillFromStorageAPI(&d, p, r)
 		disks = append(disks, d)
 	}
 	if len(disks) == 0 {
 		return nil, warns, fmt.Errorf("no disks found")
 	}
 	return protocol.SmartData{Source: "Windows storage API (smartctl not available)", Disks: disks}, warns, nil
+}
+
+// reliabilityCounters returns MSFT_StorageReliabilityCounter by disk ID.
+func reliabilityCounters() map[string]msftReliability {
+	var rel []msftReliability
+	_ = wmi.QueryNamespace("SELECT DeviceId, Temperature, Wear, ReadErrorsUncorrected, PowerOnHours, StartStopCycleCount FROM MSFT_StorageReliabilityCounter", &rel, storageNS)
+	m := map[string]msftReliability{}
+	for _, r := range rel {
+		m[r.DeviceId] = r
+	}
+	return m
 }
 
 // windowsDiskNumber maps smartctl device names (/dev/sda = PhysicalDrive0) to disk numbers.
