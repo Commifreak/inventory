@@ -67,6 +67,10 @@ if [ "$GOOS" = "linux" ]; then
     fi
   fi
 else
+  # The agent is built with a Go version that requires macOS 12 (Monterey);
+  # on older systems it aborts with "dyld: Symbol not found".
+  MACOS=$(sw_vers -productVersion 2>/dev/null || echo 0)
+  [ "${MACOS%%.*}" -ge 12 ] 2>/dev/null || die "macOS 12 (Monterey) or newer is required, this Mac runs macOS $MACOS"
   command -v smartctl >/dev/null 2>&1 || say "tip: 'brew install smartmontools' enables disk health data"
 fi
 

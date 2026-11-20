@@ -264,7 +264,7 @@ func TestEndToEnd(t *testing.T) {
 	resp, _ = http.Get(api + "/install/" + toks[0].Token + "/install.sh")
 	sh, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if !strings.Contains(string(sh), toks[0].Token) || !strings.Contains(string(sh), "inventory-agent\" install") {
+	if !strings.Contains(string(sh), toks[0].Token) || !strings.Contains(string(sh), "inventory-agent\" install") || !strings.Contains(string(sh), "macOS 12 (Monterey) or newer is required") {
 		t.Fatalf("install script: %s", sh)
 	}
 

@@ -25,7 +25,7 @@
   <p class="hint">Direct link (for downloading on the client itself – keep it private):</p>
   <div class="copy"><input readonly value="{{$d.BaseURL}}{{$d.APIPrefix}}/install/{{.Token}}/windows/inventory-agent-setup-amd64.exe"><button type="button" data-copy>Copy</button></div>
 
-  <h3>Linux (systemd) and macOS</h3>
+  <h3>Linux (systemd) and macOS (12 or newer)</h3>
   <p class="hint">Run as root on the client:</p>
   <div class="copy"><input readonly value="curl -fsSL '{{$d.BaseURL}}{{$d.APIPrefix}}/install/{{.Token}}/install.sh' | sudo sh"><button type="button" data-copy>Copy</button></div>
   <p class="hint">Available: {{range $p, $v := $d.Latest}}{{if $v}}{{if not (hasPrefix $p "windows")}}<span class="badge">{{$p}}</span> {{end}}{{end}}{{end}}</p>
