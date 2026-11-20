@@ -12,6 +12,7 @@ alert rules, intervals, update policy, users) is configured in the web UI.
 | `LISTEN_ADDR` | `:8080` | HTTP listen address (TLS is expected to be terminated by a reverse proxy). |
 | `TRUSTED_PROXIES` | private networks | CIDRs whose `X-Forwarded-*` headers are trusted (client IP, scheme, host). |
 | `LOCAL_LOGIN` | `true` | `false` disables password login (requires OIDC). |
+| `INSECURE_COOKIES` | `false` | **Testing only:** `true` never marks cookies Secure, so signing in via `http://` works although `BASE_URL` is `https://`. Logs a warning at start; do not use in production (the session cookie could then be sent unencrypted). |
 | `SESSION_LIFETIME` | `12h` | Idle lifetime of UI sessions (Go duration). |
 | `ENCRYPTION_KEY` | generated | Base64 32-byte key for stored secrets (SMTP password). Normally generated in `DATA_DIR/secrets/encryption.key`. |
 | `HA_ADDON_REPOSITORY` | `https://github.com/Commifreak/inventory-ha-addon` | Home Assistant add-on repository shown on the install page (empty: hide the section). |

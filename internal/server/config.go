@@ -20,6 +20,7 @@ type Config struct {
 	EncryptionKey        string
 	TrustedProxies       []*net.IPNet
 	LocalLogin           bool
+	InsecureCookies      bool // testing only: never mark cookies Secure
 	OIDC                 OIDCConfig
 	SessionLifetime      time.Duration
 	EOLFetch             bool
@@ -71,6 +72,7 @@ func LoadConfig(version string) (Config, error) {
 		InitialAdminPassword: os.Getenv("INITIAL_ADMIN_PASSWORD"),
 		EncryptionKey:        env("ENCRYPTION_KEY", ""),
 		LocalLogin:           envBool("LOCAL_LOGIN", true),
+		InsecureCookies:      envBool("INSECURE_COOKIES", false),
 		SessionLifetime:      12 * time.Hour,
 		EOLFetch:             envBool("EOL_FETCH", true),
 		HAAddonRepo:          env("HA_ADDON_REPOSITORY", "https://github.com/Commifreak/inventory-ha-addon"),
