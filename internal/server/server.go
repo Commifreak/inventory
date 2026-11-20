@@ -133,6 +133,9 @@ func (s *Server) Run(ctx context.Context) error {
 	errc := make(chan error, 1)
 	go func() {
 		s.log.Info("listening", "addr", s.cfg.ListenAddr, "base_url", s.cfg.BaseURL, "version", s.cfg.Version)
+		if s.cfg.InsecureCookies {
+			s.log.Warn("INSECURE_COOKIES is set: cookies are never marked Secure – for testing only, remove it in production")
+		}
 		errc <- srv.ListenAndServe()
 	}()
 	select {
@@ -229,6 +232,12 @@ func (s *Server) baseURL(r *http.Request) string {
 		return ""
 	}
 	return s.requestURL(r)
+}
+
+// secureCookies reports whether cookies get the Secure flag: with an
+// https:// address, unless INSECURE_COOKIES (testing) is set.
+func (s *Server) secureCookies(r *http.Request) bool {
+	return !s.cfg.InsecureCookies && strings.HasPrefix(s.baseURL(r), "https://")
 }
 
 // requestURL is the address the browser used, from the request (and the

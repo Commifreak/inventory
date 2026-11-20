@@ -126,7 +126,7 @@ func (s *Server) newSessionAs(w http.ResponseWriter, r *http.Request, u *store.U
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   strings.HasPrefix(s.baseURL(r), "https://"),
+		Secure:   s.secureCookies(r),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  sess.ExpiresAt,
 	})

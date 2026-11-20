@@ -83,7 +83,7 @@ func (o *oidcProvider) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: oidcStateCookie, Value: base64.RawURLEncoding.EncodeToString([]byte(enc)), Path: "/auth/oidc/",
-		HttpOnly: true, Secure: strings.HasPrefix(o.s.baseURL(r), "https://"), SameSite: http.SameSiteLaxMode, MaxAge: 600})
+		HttpOnly: true, Secure: o.s.secureCookies(r), SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	url := o.oauthConfig(r, p).AuthCodeURL(st.State, oidc.Nonce(st.Nonce), oauth2.S256ChallengeOption(st.Verifier))
 	http.Redirect(w, r, url, http.StatusFound)
 }

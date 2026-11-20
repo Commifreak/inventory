@@ -128,7 +128,7 @@ func (s *Server) cookieHint(r *http.Request) string {
 	base := s.cfg.BaseURL
 	switch {
 	case strings.HasPrefix(base, "https://") && strings.HasPrefix(req, "http://"):
-		return msg + fmt.Sprintf(" This page was opened via %s, but BASE_URL is %s – the cookie is then only sent over HTTPS. Open %s, or set BASE_URL to the address you use in the browser.", req, base, base)
+		return msg + fmt.Sprintf(" This page was opened via %s, but BASE_URL is %s – the cookie is then only sent over HTTPS. Open %s, or set BASE_URL to the address you use in the browser (for a test without HTTPS: INSECURE_COOKIES=true).", req, base, base)
 	case base != "" && !strings.EqualFold(base, req):
 		return msg + fmt.Sprintf(" BASE_URL is %s, but this page was opened via %s – set BASE_URL to the address you use in the browser, and allow cookies for it.", base, req)
 	}

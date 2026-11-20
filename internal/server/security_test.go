@@ -207,3 +207,32 @@ func TestLoginCookieDropped(t *testing.T) {
 		t.Errorf("sign-in with cookies did not end on the password page")
 	}
 }
+
+// INSECURE_COOKIES (testing) drops the Secure flag even with an https BASE_URL.
+func TestInsecureCookies(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	s.cfg.BaseURL = "https://inventory.example.com"
+	post := func() *http.Cookie {
+		t.Helper()
+		c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		resp, err := c.PostForm(ts.URL+"/login", url.Values{"username": {"admin"}, "password": {"initial-password-1"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		for _, ck := range resp.Cookies() {
+			if ck.Name == sessionCookie {
+				return ck
+			}
+		}
+		t.Fatal("no session cookie")
+		return nil
+	}
+	if !post().Secure {
+		t.Error("session cookie not Secure with an https BASE_URL")
+	}
+	s.cfg.InsecureCookies = true
+	if post().Secure {
+		t.Error("session cookie Secure although INSECURE_COOKIES is set")
+	}
+}
