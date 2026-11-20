@@ -19,7 +19,7 @@ inventory-agent-setup-amd64.exe /install /quiet
 Installers are not code-signed yet: SmartScreen shows *Windows protected your
 PC* → *More info* → *Run anyway*. See [SIGNING.md](SIGNING.md).
 
-**Linux (systemd; x64, arm64, armv7/armv6)** and **macOS 13+** – run the
+**Linux (systemd; x64, arm64, armv7/armv6)** and **macOS 12+** (Monterey; the Go toolchain does not support older versions – the installer refuses them) – run the
 command shown in the UI as root:
 
 ```

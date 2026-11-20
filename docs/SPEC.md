@@ -27,7 +27,7 @@ discussed first.
 | CI | GitHub Actions: tests (Linux + Windows runner with real collectors), image build with signed agents |
 
 Platforms: Windows 10/11 (amd64, arm64), Linux with systemd (amd64, arm64,
-armv6/7), macOS 13+ (amd64, arm64). Windows Server and non-systemd Linux are
+armv6/7), macOS 12+ (amd64, arm64; minimum of the Go toolchain). Windows Server and non-systemd Linux are
 out of scope.
 
 ## Agent ↔ server protocol
