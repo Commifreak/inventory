@@ -212,6 +212,10 @@ func smbiosSlotType(t byte) (name, kind string) {
 		return "", false
 	}
 	switch t {
+	case 0x01:
+		return "other", "other"
+	case 0x02:
+		return "unknown", "other"
 	case 0x06:
 		return "PCI", "expansion"
 	case 0x0E:
