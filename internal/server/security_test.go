@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"html"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -178,5 +181,29 @@ func TestDeviceRulesForm(t *testing.T) {
 	_, p := adm.get("/devices/" + er.DeviceID + "?tab=alerts")
 	if !strings.Contains(p, `name="enabled" value="firewall_off" >`) || !strings.Contains(p, `name="enabled" value="offline" checked>`) || !strings.Contains(p, "off globally") {
 		t.Errorf("rules form does not show checked = evaluated")
+	}
+}
+
+// A browser that drops the session cookie (BASE_URL https:// but opened via
+// http://) gets an explanation instead of a silent login loop.
+func TestLoginCookieDropped(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	s.cfg.BaseURL = "https://inventory.example.com"
+	c := &http.Client{} // no cookie jar: like a browser rejecting the Secure cookie on http://
+	resp, err := c.PostForm(ts.URL+"/login", url.Values{"username": {"admin"}, "password": {"initial-password-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	p := html.UnescapeString(string(b))
+	if !strings.Contains(p, "did not keep the session cookie") || !strings.Contains(p, "opened via "+ts.URL) || !strings.Contains(p, "BASE_URL is https://inventory.example.com") {
+		t.Errorf("no cookie hint on the login page:\n%s", p)
+	}
+	// With a working cookie the check is invisible.
+	s.cfg.BaseURL = ""
+	_, body := login(t, ts, "admin", "initial-password-1")
+	if strings.Contains(body, "did not keep the session cookie") || !strings.Contains(body, "Change password") {
+		t.Errorf("sign-in with cookies did not end on the password page")
 	}
 }

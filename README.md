@@ -63,8 +63,12 @@ services:
   inventory:
     image: ghcr.io/commifreak/inventory:latest
     restart: unless-stopped
+    ports:
+      - "8080:8080" # not needed behind a reverse proxy
     environment:
-      BASE_URL: https://inventory.example.com
+      # The address you open in the browser and the agents connect to:
+      # http://SERVER-IP:8080 without a reverse proxy, your https:// domain with one.
+      BASE_URL: http://192.0.2.10:8080
       TZ: Europe/Berlin
     volumes:
       - inventory-data:/data
@@ -74,7 +78,9 @@ volumes:
 
 1. `docker compose up -d`, then read the initial `admin` password from the log:
    `docker compose logs inventory` (or set `INITIAL_ADMIN_PASSWORD`).
-2. Sign in and change the password.
+2. Open `BASE_URL`, sign in and change the password. Use exactly that address: with
+   an `https://` `BASE_URL` the session cookie is only sent over HTTPS, so signing in
+   via `http://…` does not work.
 3. **Settings → E-mail**: configure SMTP; **Settings → Alert rules**: add recipients.
 4. **Settings → Install agents**: download the Windows installer or copy the
    Linux/macOS command and run it on a client.

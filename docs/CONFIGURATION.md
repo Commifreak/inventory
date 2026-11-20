@@ -5,7 +5,7 @@ alert rules, intervals, update policy, users) is configured in the web UI.
 
 | Variable | Default | Description |
 |---|---|---|
-| `BASE_URL` | derived from requests | Public URL, e.g. `https://inventory.example.com`. Written into installers – set it. |
+| `BASE_URL` | derived from requests | Public URL, e.g. `https://inventory.example.com` (without a reverse proxy `http://SERVER-IP:8080`). Written into installers – set it. With `https://` the session cookie is marked Secure: sign in via that HTTPS address, not via `http://`. |
 | `TZ` | `UTC` | Time zone for the UI and mails, e.g. `Europe/Berlin`. |
 | `INITIAL_ADMIN_PASSWORD` | random | Password of the `admin` user created on first start. If unset, a random password is printed to the log once. It must be changed at first login. |
 | `DATA_DIR` | `/data` | Database, encryption key, agent versions, caches. **Back it up.** |
