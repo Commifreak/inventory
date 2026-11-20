@@ -489,24 +489,113 @@ func linuxDNS(ctx context.Context) []string {
 	return uniqueStrings(dns)
 }
 
+// parseLoginctlSessions returns the users of the login sessions in the JSON
+// output of "loginctl list-sessions -o json"; greeter, lock screen and
+// service manager sessions are left out.
+func parseLoginctlSessions(out string) []string {
+	var sessions []struct {
+		User  string `json:"user"`
+		Class string `json:"class"`
+	}
+	if json.Unmarshal([]byte(out), &sessions) != nil {
+		return nil
+	}
+	var users []string
+	for _, s := range sessions {
+		if s.User != "" && (s.Class == "" || s.Class == "user" || s.Class == "user-early") {
+			users = append(users, s.User)
+		}
+	}
+	return uniqueStrings(users)
+}
+
+var logindSessionRe = regexp.MustCompile(`^(\S+) \S+ systemd-logind\[\d+\]: New session \S+ of user (\S+)\.$`)
+
+// parseLogindJournal returns the latest login per user from systemd-logind
+// journal lines ("-o short-iso"). skip filters system accounts (display
+// managers log in as gdm, lightdm, ...).
+func parseLogindJournal(out string, skip func(string) bool) []protocol.UserLogon {
+	latest := map[string]protocol.UserLogon{}
+	for _, l := range strings.Split(out, "\n") {
+		m := logindSessionRe.FindStringSubmatch(strings.TrimSpace(l))
+		if m == nil || skip(m[2]) {
+			continue
+		}
+		t, err := time.Parse("2006-01-02T15:04:05-0700", m[1])
+		if err != nil {
+			if t, err = time.Parse(time.RFC3339, m[1]); err != nil {
+				continue
+			}
+		}
+		if cur, ok := latest[m[2]]; !ok || t.After(cur.Time) {
+			latest[m[2]] = protocol.UserLogon{User: m[2], Time: t}
+		}
+	}
+	var logons []protocol.UserLogon
+	for _, v := range latest {
+		logons = append(logons, v)
+	}
+	sort.Slice(logons, func(i, j int) bool { return logons[i].Time.After(logons[j].Time) })
+	return logons
+}
+
+// isSystemUser reports accounts with a UID below 1000 other than root.
+func isSystemUser(name string) bool {
+	if name == "root" {
+		return false
+	}
+	u, err := user.Lookup(name)
+	if err != nil {
+		return false
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	return err == nil && uid < 1000
+}
+
+// userName resolves a numeric user ID to its name.
+func userName(s string) string {
+	if _, err := strconv.Atoi(s); err == nil {
+		if u, err := user.LookupId(s); err == nil {
+			return u.Username
+		}
+	}
+	return s
+}
+
 var lastDateRe = regexp.MustCompile(`\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) +(\d{1,2}) (\d\d:\d\d:\d\d) (\d{4})\b`)
 
 func linuxUsers(ctx context.Context) (protocol.UsersInfo, []string) {
 	var u protocol.UsersInfo
 	var warns []string
-	if out, err := runCmd(ctx, "who"); err == nil {
-		for _, l := range strings.Split(out, "\n") {
-			if f := strings.Fields(l); len(f) > 0 {
-				u.CurrentUsers = append(u.CurrentUsers, f[0])
+	// Sessions from systemd-logind: distributions without utmp (Ubuntu
+	// 26.04) make who print UIDs or nothing.
+	if out, err := runCmd(ctx, "loginctl", "list-sessions", "-o", "json"); err == nil {
+		u.CurrentUsers = parseLoginctlSessions(out)
+	}
+	if len(u.CurrentUsers) == 0 {
+		if out, err := runCmd(ctx, "who"); err == nil {
+			for _, l := range strings.Split(out, "\n") {
+				if f := strings.Fields(l); len(f) > 0 {
+					u.CurrentUsers = append(u.CurrentUsers, userName(f[0]))
+				}
 			}
+			u.CurrentUsers = uniqueStrings(u.CurrentUsers)
 		}
-		u.CurrentUsers = uniqueStrings(u.CurrentUsers)
 	}
 	out, err := runCmd(ctx, "last", "-F", "-w", "-n", "200")
 	if err != nil && hasCmd("wtmpdb") {
 		out, err = runCmd(ctx, "wtmpdb", "last", "-F", "-n", "200")
 	}
-	if err == nil {
+	if err != nil {
+		// Neither wtmp nor wtmpdb (Ubuntu 26.04 ships neither by default):
+		// the logins logged by systemd-logind.
+		if jout, jerr := runCmd(ctx, "journalctl", "-u", "systemd-logind", "--no-pager", "-q", "-o", "short-iso", "--since=-90d"); jerr == nil {
+			u.LastLogons = parseLogindJournal(jout, isSystemUser)
+			err = nil
+			out = ""
+		}
+	}
+	if err == nil && out != "" {
 		latest := map[string]protocol.UserLogon{}
 		for _, l := range strings.Split(out, "\n") {
 			f := strings.Fields(l)
@@ -534,7 +623,7 @@ func linuxUsers(ctx context.Context) (protocol.UsersInfo, []string) {
 			u.LastLogons = append(u.LastLogons, v)
 		}
 		sort.Slice(u.LastLogons, func(i, j int) bool { return u.LastLogons[i].Time.After(u.LastLogons[j].Time) })
-	} else {
+	} else if err != nil {
 		warns = append(warns, "last logons: "+err.Error())
 	}
 	var groups []string
