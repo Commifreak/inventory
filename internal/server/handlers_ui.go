@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -105,10 +106,33 @@ func (w *webUI) renderLogin(rw http.ResponseWriter, r *http.Request, errMsg stri
 
 func (w *webUI) handleLoginPage(rw http.ResponseWriter, r *http.Request) {
 	if u, _ := w.s.loadSession(r); u != nil {
-		http.Redirect(rw, r, "/", http.StatusSeeOther)
+		http.Redirect(rw, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+		return
+	}
+	if r.URL.Query().Get("check") != "" {
+		// Redirected here after a successful sign-in, but the session cookie
+		// did not come back: the browser dropped it.
+		w.s.log.Warn("session cookie not returned after sign-in", "ip", w.s.clientIP(r), "base_url", w.s.cfg.BaseURL, "request_url", w.s.requestURL(r))
+		w.renderLogin(rw, r, w.s.cookieHint(r))
 		return
 	}
 	w.renderLogin(rw, r, "")
+}
+
+// cookieHint explains a session cookie the browser did not keep. Usually
+// BASE_URL starts with https:// while the page is opened via http://: the
+// cookie is then marked Secure and only sent over HTTPS.
+func (s *Server) cookieHint(r *http.Request) string {
+	msg := "Sign-in succeeded, but the browser did not keep the session cookie."
+	req := s.requestURL(r)
+	base := s.cfg.BaseURL
+	switch {
+	case strings.HasPrefix(base, "https://") && strings.HasPrefix(req, "http://"):
+		return msg + fmt.Sprintf(" This page was opened via %s, but BASE_URL is %s – the cookie is then only sent over HTTPS. Open %s, or set BASE_URL to the address you use in the browser.", req, base, base)
+	case base != "" && !strings.EqualFold(base, req):
+		return msg + fmt.Sprintf(" BASE_URL is %s, but this page was opened via %s – set BASE_URL to the address you use in the browser, and allow cookies for it.", base, req)
+	}
+	return msg + " Allow cookies for this site and try again."
 }
 
 func (w *webUI) handleLogin(rw http.ResponseWriter, r *http.Request) {
@@ -150,7 +174,9 @@ func (w *webUI) handleLogin(rw http.ResponseWriter, r *http.Request) {
 	if u.MustChangePassword {
 		next = "/account/password"
 	}
-	http.Redirect(rw, r, next, http.StatusSeeOther)
+	// Via the login page: if the browser dropped the cookie, it explains why
+	// instead of silently showing the login form again.
+	http.Redirect(rw, r, "/login?check=1&next="+url.QueryEscape(next), http.StatusSeeOther)
 }
 
 func (w *webUI) handleLogout(rw http.ResponseWriter, r *http.Request) {

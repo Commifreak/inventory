@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -173,7 +174,7 @@ func (o *oidcProvider) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o.s.store.Audit(r.Context(), u.Username, "login.oidc", o.s.clientIP(r))
-	http.Redirect(w, r, st.Next, http.StatusSeeOther)
+	http.Redirect(w, r, "/login?check=1&next="+url.QueryEscape(safeNext(st.Next)), http.StatusSeeOther)
 }
 
 func claimStrings(v any) []string {

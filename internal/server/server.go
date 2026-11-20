@@ -228,6 +228,12 @@ func (s *Server) baseURL(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
+	return s.requestURL(r)
+}
+
+// requestURL is the address the browser used, from the request (and the
+// X-Forwarded-* headers of trusted proxies).
+func (s *Server) requestURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
