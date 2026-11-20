@@ -37,6 +37,9 @@ func TestLinuxStorageControllers(t *testing.T) {
 		w(ahci+"/ata"+n+"/link"+n+"/ata_link/link"+n+"/sata_spd", spd)
 	}
 	w(ahci+"/ata1/link1/dev1.0/ata_device/dev1.0/class", "ata")
+	// Empty ports have device objects too, with class "none".
+	w(ahci+"/ata2/link2/dev2.0/ata_device/dev2.0/class", "none")
+	w(ahci+"/ata4/link4/dev4.0/ata_device/dev4.0/class", "none")
 	_ = os.MkdirAll(filepath.Join(sys, ahci, "ata1/host0/target0:0:0/0:0:0:0/block/sda"), 0o755)
 	w("block/sda/device/vendor", "ATA")
 	w("block/sda/device/model", "Samsung SSD 870")
@@ -76,6 +79,9 @@ func TestLinuxStorageControllers(t *testing.T) {
 	}
 	if p := a.Ports[1]; p.Occupied || p.Speed != "" {
 		t.Errorf("port 2 must be empty: %+v", p)
+	}
+	if p := a.Ports[3]; p.Occupied {
+		t.Errorf("empty port with a class-none device object counted as occupied: %+v", p)
 	}
 	if p := a.Ports[2]; !p.Occupied || p.Path != "/dev/sr0" || p.Device != "HL-DT-ST DVDRAM GUD1N" {
 		t.Errorf("port 3: %+v", p)

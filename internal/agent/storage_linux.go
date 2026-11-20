@@ -109,8 +109,13 @@ func ataPorts(sys, dev string) []protocol.StoragePort {
 		if spd != "" && spd != "<unknown>" {
 			port.Occupied, port.Speed = true, spd
 		}
-		if hasGlob(filepath.Join(link, "dev"+n+".*")) {
-			port.Occupied = true
+		// libata creates devN.M for every port; its class says whether a
+		// device is attached ("none" for empty ports).
+		classes, _ := filepath.Glob(filepath.Join(link, "dev"+n+".*", "ata_device", "dev"+n+".*", "class"))
+		for _, c := range classes {
+			if v := readTrim(c); v != "" && v != "none" {
+				port.Occupied = true
+			}
 		}
 		if blocks, _ := filepath.Glob(filepath.Join(ata, "host*/target*/*/block/*")); len(blocks) > 0 {
 			name := filepath.Base(blocks[0])
