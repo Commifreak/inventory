@@ -111,9 +111,9 @@
       <dt>{{if .Users.AdminGroup}}{{.Users.AdminGroup}}{{else}}Administrators{{end}}</dt><dd>{{if .Users.Admins}}{{join .Users.Admins ", "}}{{else}}<span class="muted">–</span>{{end}}</dd>
     </dl>
     {{if .Users.LastLogons}}
-    <table class="compact"><thead><tr><th>User</th><th>Last logon</th></tr></thead><tbody>
+    <div class="tablewrap"><table class="compact"><thead><tr><th>User</th><th>Last logon</th></tr></thead><tbody>
       {{range .Users.LastLogons}}<tr><td>{{.User}}</td><td>{{fmtTime .Time}}{{if .From}} <span class="muted">from {{.From}}</span>{{end}}</td></tr>{{end}}
-    </tbody></table>{{end}}
+    </tbody></table></div>{{end}}
   </section>
 </div>
 
@@ -168,7 +168,7 @@
 {{with .PiPower}}
 <section class="card">
   <h2>Power (Raspberry Pi)</h2>
-  <table class="compact"><thead><tr><th></th><th>Now</th><th>Since boot</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th></th><th>Now</th><th>Since boot</th></tr></thead><tbody>
     <tr><td>Undervoltage</td><td>{{if .UndervoltageNow}}<span class="badge st-critical">yes</span>{{else}}<span class="badge st-ok">no</span>{{end}}</td>
       <td>{{if eq .Source "vcgencmd"}}{{if .UndervoltageSinceBoot}}<span class="badge st-warning">yes</span>{{else}}<span class="badge st-ok">no</span>{{end}}{{else}}–{{end}}</td></tr>
     {{if eq .Source "vcgencmd"}}
@@ -176,25 +176,25 @@
     <tr><td>Frequency capped</td><td>{{if .FreqCappedNow}}<span class="badge st-warning">yes</span>{{else}}no{{end}}</td><td>{{if .FreqCappedSinceBoot}}yes{{else}}no{{end}}</td></tr>
     <tr><td>Soft temperature limit</td><td>{{if .SoftTempLimitNow}}<span class="badge st-warning">yes</span>{{else}}no{{end}}</td><td>{{if .SoftTempLimitSinceBoot}}yes{{else}}no{{end}}</td></tr>
     {{end}}
-  </tbody></table>
+  </tbody></table></div>
   <p class="hint">Source: {{.Source}}{{if .Raw}} (throttled={{.Raw}}){{end}}. Undervoltage events are also recorded in the Events tab.</p>
 </section>
 {{end}}
 {{with .Hardware.Slots}}
 <section class="card">
   <h2>Expansion slots <span class="sub">(according to firmware)</span></h2>
-  <table class="compact"><thead><tr><th>Slot</th><th>Type</th><th>Width</th><th>Usage</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Slot</th><th>Type</th><th>Width</th><th>Usage</th></tr></thead><tbody>
   {{range .}}<tr><td>{{.Designation}}</td><td>{{.Type}}</td><td>{{.Width}}</td><td>{{template "slotusage" .Usage}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
   <p class="hint">As described by the BIOS/UEFI – vendors are not always accurate.</p>
 </section>
 {{end}}
 {{if .Battery}}
 <section class="card">
   <h2>Battery</h2>
-  <table class="compact"><thead><tr><th>Battery</th><th>Health</th><th>Capacity</th><th>Cycles</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Battery</th><th>Health</th><th>Capacity</th><th>Cycles</th></tr></thead><tbody>
   {{range .Battery}}<tr><td>{{.Name}}<div class="sub">{{.Status}}</div></td><td>{{printf "%.0f" .HealthPercent}}%</td><td>{{printf "%.0f" .FullChargeCapacity}} / {{printf "%.0f" .DesignCapacity}} mWh</td><td>{{if .CycleCount}}{{.CycleCount}}{{else}}–{{end}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
 </section>
 {{end}}
 </div>
@@ -260,9 +260,9 @@
     <h3>{{.Name}} {{if .Type}}<span class="badge">{{.Type}}</span>{{end}}</h3>
     <p class="sub">{{if .Vendor}}{{.Vendor}} · {{end}}{{if .Driver}}driver {{.Driver}} · {{end}}<span class="mono">{{.Location}}</span></p>
     {{if .Ports}}
-    <table class="compact"><thead><tr><th>Port</th><th>Status</th><th>Device</th><th>Path</th><th>Link</th></tr></thead><tbody>
+    <div class="tablewrap"><table class="compact"><thead><tr><th>Port</th><th>Status</th><th>Device</th><th>Path</th><th>Link</th></tr></thead><tbody>
     {{range .Ports}}<tr><td>{{.Port}}</td><td>{{if .Occupied}}<span class="badge st-ok">occupied</span>{{else}}<span class="badge">empty</span>{{end}}</td><td>{{.Device}}</td><td class="mono small">{{.Path}}</td><td class="small">{{.Speed}}</td></tr>{{end}}
-    </tbody></table>
+    </tbody></table></div>
     {{else}}<p class="muted small">No attached devices found.</p>{{end}}
     {{if not .PortsComplete}}<p class="hint">Only occupied ports are known for this controller; empty ports cannot be detected.</p>{{end}}
   </div>
@@ -273,9 +273,9 @@
 <section class="card">
   <h2>Storage slots <span class="sub">(according to firmware)</span></h2>
   <p class="hint">M.2/U.2 slots as described by the BIOS/UEFI. This is the only source for empty M.2 slots, but vendors are not always accurate.</p>
-  <table class="compact"><thead><tr><th>Slot</th><th>Type</th><th>Width</th><th>Usage</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Slot</th><th>Type</th><th>Width</th><th>Usage</th></tr></thead><tbody>
   {{range .}}<tr><td>{{.Designation}}</td><td>{{.Type}}</td><td>{{.Width}}</td><td>{{template "slotusage" .Usage}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
 </section>
 {{end}}{{end}}
 {{end}}
@@ -302,9 +302,9 @@
 {{if .Services}}
 <section class="card">
   <h2>Services</h2>
-  <table class="compact"><thead><tr><th>Service</th><th>State</th><th>Start</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Service</th><th>State</th><th>Start</th></tr></thead><tbody>
   {{range .Services}}<tr><td>{{.Display}} <span class="sub mono">{{.Name}}</span></td><td>{{.State}}</td><td>{{.StartType}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
 </section>{{end}}
 </div>
 
@@ -478,9 +478,9 @@
 {{if $d.UpdateLog}}
 <section class="card">
   <h2>Agent update log</h2>
-  <table class="compact"><thead><tr><th>Time</th><th>From</th><th>To</th><th>Result</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Time</th><th>From</th><th>To</th><th>Result</th></tr></thead><tbody>
   {{range $d.UpdateLog}}<tr><td>{{fmtTime .Time}}</td><td class="mono">{{.From}}</td><td class="mono">{{.To}}</td><td>{{if .Success}}<span class="badge st-ok">ok</span>{{else}}<span class="badge st-critical">failed</span> <span class="small">{{.Error}}</span>{{end}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
 </section>{{end}}
 
 <section class="card">
@@ -501,11 +501,11 @@
 
 <section class="card">
   <h2>Collectors</h2>
-  <table class="compact"><thead><tr><th>Collector</th><th>Last run</th><th>Duration</th><th>Status</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Collector</th><th>Last run</th><th>Duration</th><th>Status</th></tr></thead><tbody>
   {{range collectors}}{{$s := index $d.Snaps .}}<tr><td>{{.}}</td>
     {{if $s}}<td>{{fmtTime $s.CollectedAt}} <span class="muted">({{ago $s.CollectedAt}})</span></td><td>{{$s.DurationMs}} ms</td><td>{{if $s.Error}}<span class="err-text small">{{$s.Error}}</span>{{else if $s.Warnings}}<span class="warn-text small">{{len $s.Warnings}} warning(s)</span>{{else}}ok{{end}}</td>
     {{else}}<td colspan="3" class="muted">not collected yet</td>{{end}}</tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
 </section>
 
 {{if $d.AllAreas}}

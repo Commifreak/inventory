@@ -50,9 +50,9 @@
 
 <section class="card">
   <h2>{{if $p.Super}}Your tokens{{else}}Tokens{{end}}</h2>
-  <table class="compact"><thead><tr><th>Name</th>{{if $p.MultiArea}}<th>Area</th>{{end}}<th>Created</th><th>Uses</th><th>State</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Name</th>{{if $p.MultiArea}}<th>Area</th>{{end}}<th>Created</th><th>Uses</th><th>State</th></tr></thead><tbody>
   {{range $d.Tokens}}<tr class="{{if not .Active}}dim{{end}}"><td>{{.Name}}</td>{{if $p.MultiArea}}<td>{{index $p.AreaNames .AreaID}}</td>{{end}}<td>{{fmtTime .CreatedAt}}</td><td>{{.UseCount}}</td><td>{{if .Active}}active{{else}}revoked {{fmtTime .RevokedAt}}{{end}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
   <form method="post" action="/settings/tokens" class="row">
     {{template "csrf" $csrf}}
     <input name="name" placeholder="Name, e.g. 'Family'" maxlength="100">
@@ -66,9 +66,9 @@
   <h2>Tokens of other areas</h2>
   <p class="hint">Areas you are not a member of. To work with them, use <i>Sign in as</i> under <a href="/settings/users">Users</a>.</p>
   {{if $d.Others}}
-  <table class="compact"><thead><tr><th>Name</th><th>Area</th><th>Created</th><th>Uses</th><th>Last used</th><th>State</th></tr></thead><tbody>
+  <div class="tablewrap"><table class="compact"><thead><tr><th>Name</th><th>Area</th><th>Created</th><th>Uses</th><th>Last used</th><th>State</th></tr></thead><tbody>
   {{range $d.Others}}<tr class="{{if not .Active}}dim{{end}}"><td>{{.Name}}</td><td>{{index $p.AreaNames .AreaID}}</td><td>{{fmtTime .CreatedAt}}</td><td>{{.UseCount}}</td><td>{{if .LastUsedAt.IsZero}}–{{else}}{{ago .LastUsedAt}}{{end}}</td><td>{{if .Active}}active{{else}}revoked {{fmtTime .RevokedAt}}{{end}}</td></tr>{{end}}
-  </tbody></table>
+  </tbody></table></div>
   {{else}}<p class="muted">None.</p>{{end}}
 </section>
 {{end}}
