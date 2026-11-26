@@ -31,7 +31,7 @@ jobs:
           else
             echo "version=$(REQUIRE_TAG=1 scripts/version.sh "edge.$(date -u +%Y%m%d%H%M)")" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
