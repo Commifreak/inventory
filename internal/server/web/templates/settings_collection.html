@@ -7,7 +7,7 @@
   <form method="post" action="/settings/collection">
     {{template "csrf" .CSRF}}
     <label>Check-in interval (minutes) <input name="checkin_minutes" inputmode="numeric" value="{{div $d.Config.CheckinIntervalSec 60}}"></label>
-    <table class="compact">
+    <div class="tablewrap"><table class="compact">
       <thead><tr><th>Enabled</th><th>Collector</th><th>What</th><th>Every (hours)</th></tr></thead>
       <tbody>
       {{range collectors}}{{$sec := index $d.Config.Intervals .}}{{$def := index $d.Defaults.Intervals .}}
@@ -17,7 +17,7 @@
         <td><input name="hours_{{.}}" inputmode="decimal" class="short" value="{{if gt $sec 0}}{{fnum (durHours $sec)}}{{else}}{{fnum (durHours $def)}}{{end}}"></td></tr>
       {{end}}
       </tbody>
-    </table>
+    </table></div>
     <button class="primary">Save</button>
   </form>
 </section>

@@ -59,7 +59,9 @@ footer { text-align: center; font-size: .8rem; padding: 1rem; }
 .narrowcard { max-width: 520px; }
 .cardhead { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
 .cardhead h2 { margin: 0; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0 1rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 0 1rem; }
+/* Grid items may shrink below their content, so wide tables scroll inside their card. */
+.grid > * { min-width: 0; }
 .pagehead { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
 .pagehead p { margin: .1rem 0; }
 .notes { white-space: pre-wrap; background: var(--surface-2); padding: .4rem .6rem; border-radius: 6px; display: inline-block; }
@@ -71,6 +73,8 @@ dt { color: var(--muted); }
 dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 
 .tablewrap { overflow-x: auto; }
+/* Long paths/IDs (\\.\PHYSICALDRIVE0, PCI locations) may break instead of widening the table. */
+td.mono, .controller h3, .controller .sub { overflow-wrap: anywhere; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-weight: 600; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .02em; }
 th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
