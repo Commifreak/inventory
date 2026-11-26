@@ -228,7 +228,7 @@ func TestKernelEventsSDCardAndDmesg(t *testing.T) {
 	// The same line from the journal is not counted twice.
 	journal := journalRecords([]string{`{"MESSAGE":"I/O error, dev mmcblk0, sector 1234 op 0x1:(WRITE) flags 0x0","__REALTIME_TIMESTAMP":"` +
 		strconv.FormatInt(boot.Add(101*time.Second).UnixMicro(), 10) + `"}`})
-	evs := parseKernelRecords(append(recs, journal...))
+	evs := parseKernelRecords(append(recs, journal...), nil)
 	// mmc0 (host) and mmcblk0 (card) at minute 1 form one group, ext4 warning at minute 3 another.
 	if len(evs) != 2 {
 		t.Fatalf("expected 2 events, got %+v", evs)
@@ -276,7 +276,7 @@ func TestUndervoltage(t *testing.T) {
 		"[   12.000000] hwmon hwmon1: Undervoltage detected!\n"+
 		"[   20.000000] hwmon hwmon1: Voltage normalised\n"+
 		"[  400.000000] Under-voltage detected! (0x00050005)\n", boot)
-	evs := parseKernelRecords(recs)
+	evs := parseKernelRecords(recs, nil)
 	if len(evs) != 2 || evs[0].Kind != protocol.EventUndervoltage || !strings.Contains(evs[0].Message, "+1 similar") {
 		t.Fatalf("unexpected %+v", evs)
 	}
@@ -318,5 +318,45 @@ func TestMarkExternalLinux(t *testing.T) {
 	markExternalLinux(evs, blk)
 	if evs[0].External {
 		t.Fatal("USB system disk marked external")
+	}
+}
+
+// A read error logs port (ataN) and disk (sdX) lines: one event per error,
+// named after the disk, with the sector line as message.
+func TestKernelReadErrorBurst(t *testing.T) {
+	sys := t.TempDir()
+	dev := filepath.Join(sys, "devices/pci0000:00/0000:00:17.0/ata2/host1/target1:0:0/1:0:0:0")
+	if err := os.MkdirAll(dev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.MkdirAll(filepath.Join(sys, "block/sdb"), 0o755)
+	if err := os.Symlink(dev, filepath.Join(sys, "block/sdb/device")); err != nil {
+		t.Fatal(err)
+	}
+	ata := ataDisks(sys)
+	if ata["ata2"] != "sdb" {
+		t.Fatalf("ata map: %v", ata)
+	}
+	at := time.Date(2026, 11, 26, 16, 17, 57, 0, time.UTC)
+	var recs []kmsg
+	for i, l := range []string{
+		"ata2.00: exception Emask 0x0 SAct 0x800002ff SErr 0x0 action 0x0",
+		"ata2.00: failed command: READ FPDMA QUEUED",
+		"sd 1:0:0:0: [sdb] tag#31 Sense Key : Medium Error [current]",
+		"sd 1:0:0:0: [sdb] tag#31 Add. Sense: Unrecovered read error - auto reallocate failed",
+		"critical medium error, dev sdb, sector 2930266584 op 0x0:(READ) flags 0x80700 phys_seg 1 prio class 2",
+	} {
+		recs = append(recs, kmsg{at.Add(time.Duration(i) * time.Millisecond), l, "journal"})
+	}
+	evs := parseKernelRecords(recs, ata)
+	if len(evs) != 1 {
+		t.Fatalf("expected one event, got %+v", evs)
+	}
+	if e := evs[0]; e.Device != "sdb" || !strings.HasPrefix(e.Message, "critical medium error, dev sdb, sector 2930266584") || !strings.Contains(e.Message, "(+4 similar)") {
+		t.Errorf("event: %+v", e)
+	}
+	// Without the map (e.g. sysfs not readable) port and disk stay apart.
+	if evs := parseKernelRecords(recs, nil); len(evs) != 2 {
+		t.Errorf("without map: %+v", evs)
 	}
 }

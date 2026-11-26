@@ -283,7 +283,7 @@ func collectEventsLinux(ctx context.Context, st *State) (any, []string, error) {
 			filtered = append(filtered, r)
 		}
 	}
-	events := parseKernelRecords(filtered)
+	events := parseKernelRecords(filtered, ataDisks("/sys"))
 	markExternalLinux(events, lsblk(ctx))
 	return protocol.EventsData{Since: since, Events: events}, warns, nil
 }
@@ -354,13 +354,50 @@ func journalRecords(lines []string) []kmsg {
 
 // ParseKernelEvents extracts events from journalctl JSON lines.
 func ParseKernelEvents(lines []string) []protocol.CriticalEvent {
-	return parseKernelRecords(journalRecords(lines))
+	return parseKernelRecords(journalRecords(lines), nil)
+}
+
+var ataPathRe = regexp.MustCompile(`/(ata\d+)/`)
+
+// ataDisks maps libata ports to their disks ("ata2" -> "sdb"), so that the
+// port and disk lines of one read error form one event.
+func ataDisks(sys string) map[string]string {
+	m := map[string]string{}
+	devs, _ := filepath.Glob(filepath.Join(sys, "block", "*", "device"))
+	for _, d := range devs {
+		p, err := filepath.EvalSymlinks(d)
+		if err != nil {
+			continue
+		}
+		if sm := ataPathRe.FindStringSubmatch(p + "/"); sm != nil {
+			m[sm[1]] = filepath.Base(filepath.Dir(d))
+		}
+	}
+	return m
+}
+
+var (
+	sectorLineRe = regexp.MustCompile(`, sector \d+`)
+	mediumLineRe = regexp.MustCompile(`Medium Error|Unrecovered read error`)
+)
+
+// diskMsgScore ranks the lines of an error burst for the event message: the
+// line naming the sector says most, the generic port exception least.
+func diskMsgScore(msg string) int {
+	switch {
+	case sectorLineRe.MatchString(msg):
+		return 2
+	case mediumLineRe.MatchString(msg):
+		return 1
+	}
+	return 0
 }
 
 // parseKernelRecords extracts OOM kills and disk errors. The same line seen
 // in journal and dmesg is counted once; repeated disk errors of one device
-// within a minute are grouped.
-func parseKernelRecords(recs []kmsg) []protocol.CriticalEvent {
+// within a minute are grouped (ataN lines with their disk, see ataDisks);
+// the event message is the most telling line of the group.
+func parseKernelRecords(recs []kmsg, ataDisk map[string]string) []protocol.CriticalEvent {
 	sort.SliceStable(recs, func(i, j int) bool { return recs[i].t.Before(recs[j].t) })
 	type group struct {
 		ev    protocol.CriticalEvent
@@ -409,9 +446,15 @@ func parseKernelRecords(recs []kmsg) []protocol.CriticalEvent {
 			if ignoreDev.MatchString(dev) {
 				break
 			}
+			if d, ok := ataDisk[dev]; ok {
+				dev = d
+			}
 			key := fmt.Sprintf("disk|%s|%d", diskGroup(dev), ts.Unix()/60)
 			if g, ok := groups[key]; ok {
 				g.count++
+				if diskMsgScore(msg) > diskMsgScore(g.ev.Message) {
+					g.ev.Message = truncateStr(msg, 500)
+				}
 			} else {
 				groups[key] = &group{ev: protocol.CriticalEvent{Kind: protocol.EventDiskError, Time: ts, Source: "kernel", Device: dev, Message: truncateStr(msg, 500), Key: key}, count: 1}
 				order = append(order, key)
