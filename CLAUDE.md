@@ -141,7 +141,7 @@ UI changes: render pages in a throwaway test (`newTestServer` + `sampleReport`, 
   committed file is empty): PR titles per release that change more than docs/tests/CI/scripts.
   Every user sees them once as "What's new" (`users.changelog_seen_at`) and on `/changelog`.
 - Claude sessions cannot push tags (git proxy rejects them with 403): the maintainer creates
-  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: `v0.4.0`. If the add-on job fails with
+  releases in the GitHub UI (tag `vX.Y.Z` on `main`). Released: up to `v0.5.2`. If the add-on job fails with
   "Bad credentials", the `ADDON_REPO_TOKEN` secret expired: the maintainer renews it, then re-run
   the failed job.
 

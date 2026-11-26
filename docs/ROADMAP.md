@@ -37,6 +37,10 @@
   CBS log parsing needed). Repairs stay manual (read-only principle).
 - PCIe bus errors (NVMe has no CRC counter in its SMART log): Windows WHEA events,
   Linux PCIe AER messages, as event rule.
+- macOS disk errors: the macOS agent reports only kernel panics as events. I/O errors from
+  the unified log (`log show` filtered on disk/I/O errors – slow, run incrementally since the
+  last collection) for the "Disk errors" rule. Wait for a real Mac to test with (the macOS
+  agent itself is not field-tested yet).
 
 ## Decided against
 
