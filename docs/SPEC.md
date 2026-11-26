@@ -122,7 +122,9 @@ software 12 h, autostart 12 h, events 4 h.
   51, 52, 153; Ntfs 55; stornvme/storahci 129); Linux kernel log from the
   journal merged with `dmesg` (works with volatile journals/log2ram and without
   journald): I/O and file system errors, SD card/eMMC errors (`mmc`/`mmcblk`),
-  USB SSD resets, OOM kills, Raspberry Pi undervoltage; macOS kernel panics.
+  USB SSD resets, OOM kills, Raspberry Pi undervoltage; macOS kernel panics. The lines of
+  one error burst (per disk and minute; libata ports `ataN` are mapped to their disk via
+  sysfs) form one event; its message is the most telling line (the one with the sector).
 - **Raspberry Pi power:** throttling state from `vcgencmd get_throttled`
   (undervoltage, throttling, frequency capping, soft temperature limit – now
   and since boot), fallback to the `rpi_volt` hwmon alarm.
